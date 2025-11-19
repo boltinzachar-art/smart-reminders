@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import WebApp from '@twa-dev/sdk';
-import { Plus, Calendar, Clock, Trash2, Search, ExternalLink, RefreshCw, X, ChevronRight } from 'lucide-react';
+import { Plus, Calendar, Clock, Trash2, Search, ExternalLink, RefreshCw, ChevronRight } from 'lucide-react';
 
 const App = () => {
   const [tasks, setTasks] = useState([]);
@@ -20,94 +20,120 @@ const App = () => {
     priority: 3
   });
 
-// 1. Инициализация (ВРЕМЕННО ОТКЛЮЧАЕМ)
-  /*
+  // 1. Инициализация (С определением платформы)
   useEffect(() => {
     if (WebApp.initDataUnsafe.user) {
+      // Если открыто в Телеграм
       setUserId(WebApp.initDataUnsafe.user.id);
       WebApp.expand();
       WebApp.enableClosingConfirmation();
       WebApp.setHeaderColor('#F2F2F7'); 
       WebApp.setBackgroundColor('#F2F2F7');
+    } else {
+      // Если открыто в браузере (для тестов)
+      console.log("Режим тестирования в браузере. ID = 777");
+      setUserId(777); // Временный ID, чтобы ты видел интерфейс в браузере
     }
   }, []);
-  */
 
-  // ...
+  // 2. Загрузка задач
+  useEffect(() => {
+    if (userId) {
+      loadTasks();
+      // Фоновое обновление раз в минуту (чтобы подтянуть задачи с других устройств)
+      const interval = setInterval(loadTasks, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [userId]);
 
   const loadTasks = async () => {
     try {
-      // alert(`Загружаю задачи для ID: ${userId}`); // <--- ПРОВЕРКА ЗАГРУЗКИ
-
       let query = supabase
         .from('tasks')
         .select('*')
-        // .eq('telegram_user_id', userId) // <--- ВРЕМЕННО ЗАКОММЕНТИРУЙ ЭТУ СТРОКУ
-        .eq('completed', false)
+        .eq('telegram_user_id', userId) // Фильтр по ID
+        .eq('completed', false)         // Показываем только активные
         .order('next_run', { ascending: true });
 
       const { data, error } = await query;
-      
       if (error) throw error;
-      
-      // alert(`Найдено задач: ${data?.length}`); // <--- СКОЛЬКО НАШЛОСЬ?
       setTasks(data || []);
     } catch (error) {
-      alert('Ошибка загрузки: ' + error.message);
+      console.error('Error loading:', error);
     }
   };
 
-  // === ЛОГИКА ===
-
+  // === МГНОВЕННОЕ СОЗДАНИЕ ===
   const createTask = async () => {
     if (!newTask.title) return alert('Введите название');
-    if (!newTask.next_run) return alert('Выберите время');
+    // Для MVP ставим текущее время, если не выбрано
+    const runTime = newTask.next_run || new Date().toISOString();
 
     let template = null;
     if (newTask.type === 'email') template = { to: "", subject: newTask.title, body: newTask.description };
     if (newTask.type === 'whatsapp') template = { phone: "", message: newTask.title };
     if (newTask.type === 'web_search') template = { query: newTask.title };
 
+    // 1. Создаем объект задачи локально
     const optimisticTask = {
       ...newTask,
+      next_run: runTime,
       telegram_user_id: userId,
       status: 'active',
       completed: false,
-      action_template: template
+      action_template: template,
+      // Временный ID для отрисовки (потом заменится настоящим)
+      id: 'temp-' + Date.now() 
     };
 
+    // 2. Сразу показываем на экране
+    setTasks(prev => [...prev, optimisticTask]);
+    setShowAddModal(false);
+    setNewTask({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
+
+    // 3. Отправляем в базу
     try {
-      const { data, error } = await supabase.from('tasks').insert([optimisticTask]).select();
+      const { data, error } = await supabase.from('tasks').insert([{
+        ...optimisticTask,
+        id: undefined // Удаляем временный ID перед отправкой
+      }]).select();
+
       if (error) throw error;
-      if (data) setTasks(prev => [...prev, data[0]]);
-      
-      setShowAddModal(false);
-      setNewTask({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
+
+      // Заменяем временную задачу на реальную из базы (чтобы был правильный ID)
+      if (data) {
+        setTasks(prev => prev.map(t => t.id === optimisticTask.id ? data[0] : t));
+      }
     } catch (error) {
-      alert('Ошибка: ' + error.message);
+      alert('Ошибка сохранения: ' + error.message);
+      loadTasks(); // Откат, если ошибка
     }
   };
 
+  // === МГНОВЕННОЕ ВЫПОЛНЕНИЕ ===
   const completeTask = async (task) => {
     const isRecurring = task.frequency !== 'once';
 
+    // 1. Сразу обновляем интерфейс
     setTasks(current => current.map(t => {
       if (t.id === task.id) {
          if (isRecurring) {
             return { ...t, next_run: calculateNextRun(t.next_run, t.frequency) };
          } else {
-            return { ...t, completed: true };
+            return { ...t, completed: true }; // Помечаем выполненной
          }
       }
       return t;
     }));
 
+    // Если одноразовая - убираем из списка с задержкой (анимация)
     if (!isRecurring) {
         setTimeout(() => {
             setTasks(current => current.filter(t => t.id !== task.id));
         }, 300);
     }
 
+    // 2. Отправляем в базу
     try {
       if (isRecurring) {
         const nextRun = calculateNextRun(task.next_run, task.frequency);
@@ -115,20 +141,22 @@ const App = () => {
       } else {
         await supabase.from('tasks').update({ completed: true, status: 'completed' }).eq('id', task.id);
       }
+      // Лог
       await supabase.from('task_log').insert([{ task_id: task.id, status: 'completed' }]);
     } catch (error) {
-      console.error('Ошибка завершения:', error);
-      loadTasks();
+      console.error('Ошибка синхронизации:', error);
     }
   };
 
   const deleteTask = async (taskId) => {
     if (!confirm('Удалить задачу?')) return;
+    // 1. Сразу убираем
     setTasks(curr => curr.filter(t => t.id !== taskId));
+    // 2. Удаляем в базе
     await supabase.from('tasks').delete().eq('id', taskId);
   };
 
-  // === ВСПОМОГАТЕЛЬНЫЕ ===
+  // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 
   const calculateNextRun = (currentRun, frequency) => {
     const current = new Date(currentRun);
@@ -188,7 +216,7 @@ const App = () => {
   const overdueCount = tasks.filter(t => isOverdue(t.next_run)).length;
 
   return (
-    // w-full и overflow-x-hidden ГАРАНТИРУЮТ отсутствие горизонтальной прокрутки
+    // w-full и overflow-x-hidden гарантируют отсутствие прокрутки вбок
     <div className="min-h-[100dvh] w-full overflow-x-hidden bg-[#F2F2F7] text-black font-sans flex flex-col">
       
       {/* === ШАПКА === */}
@@ -209,7 +237,7 @@ const App = () => {
           />
         </div>
 
-        {/* Фильтры (Табы) - здесь прокрутка разрешена ВНУТРИ блока */}
+        {/* Фильтры */}
         <div className="w-full overflow-x-auto hide-scrollbar">
            <div className="flex gap-2 pb-2">
              {['all', 'today', 'upcoming'].map(f => (
@@ -225,7 +253,7 @@ const App = () => {
         </div>
       </div>
 
-      {/* === СПИСОК ЗАДАЧ === */}
+      {/* === СПИСОК === */}
       <div className="flex-1 w-full px-4 pb-32 space-y-3">
         {filteredList.length === 0 ? (
            <div className="text-center py-20 text-gray-400">
@@ -233,19 +261,17 @@ const App = () => {
            </div>
         ) : (
           filteredList.map(task => (
-            // max-w-full предотвращает растягивание
             <div key={task.id} className="group w-full max-w-full bg-white rounded-xl p-3 shadow-[0_1px_2px_rgba(0,0,0,0.05)] flex items-start gap-3 transition-all active:scale-[0.99]">
                
-               {/* КРУЖОЧЕК */}
+               {/* КРУЖОЧЕК (Кнопка выполнения) */}
                <button 
                  onClick={() => completeTask(task)}
                  className="mt-1 shrink-0 w-[22px] h-[22px] rounded-full border-2 border-gray-300 hover:border-blue-500 focus:outline-none transition-colors"
                />
 
-               {/* ТЕЛО ЗАДАЧИ (min-w-0 важно для обрезки текста!) */}
+               {/* ТЕЛО ЗАДАЧИ */}
                <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start">
-                    {/* break-words переносит длинные слова */}
                     <span className={`text-[17px] leading-tight break-words ${task.completed ? 'line-through text-gray-400' : 'text-black'}`}>
                       {task.title}
                     </span>
@@ -255,7 +281,6 @@ const App = () => {
                     <p className="text-gray-500 text-[15px] mt-0.5 line-clamp-2 leading-snug break-words">{task.description}</p>
                   )}
 
-                  {/* Мета-данные */}
                   <div className="flex items-center flex-wrap gap-2 mt-2">
                      <span className={`text-xs font-medium ${isOverdue(task.next_run) ? 'text-red-500' : 'text-gray-400'}`}>
                         {formatTime(task.next_run)}
@@ -275,7 +300,7 @@ const App = () => {
                   </div>
                </div>
 
-               {/* Удаление */}
+               {/* Удаление (мусорка) */}
                <button onClick={() => deleteTask(task.id)} className="shrink-0 text-gray-300 hover:text-red-500 p-1">
                   <Trash2 size={16} />
                </button>
@@ -284,7 +309,7 @@ const App = () => {
         )}
       </div>
 
-      {/* === НИЖНЯЯ ПАНЕЛЬ === */}
+      {/* === НИЖНЯЯ ПАНЕЛЬ (Создание) === */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7]/90 backdrop-blur-md border-t border-gray-200 flex justify-between items-center z-30">
          <button 
            onClick={() => setShowAddModal(true)}
@@ -297,14 +322,14 @@ const App = () => {
          </button>
       </div>
 
-      {/* === МОДАЛКА === */}
+      {/* === МОДАЛКА (Форма) === */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
            <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl p-4 animate-slide-up max-h-[90vh] overflow-y-auto shadow-2xl">
               <div className="flex justify-between items-center mb-4 px-2">
                  <button onClick={() => setShowAddModal(false)} className="text-blue-600 text-[17px]">Отмена</button>
                  <h3 className="font-bold text-black text-[17px]">Новое</h3>
-                 <button onClick={createTask} className="text-blue-600 font-bold text-[17px] disabled:opacity-50">Добавить</button>
+                 <button onClick={createTask} className="text-blue-600 font-bold text-[17px]">Добавить</button>
               </div>
 
               <div className="bg-white rounded-xl overflow-hidden mb-6 shadow-sm">
@@ -334,7 +359,6 @@ const App = () => {
                     />
                  </div>
                  
-                 {/* Selects iOS Style */}
                  <div className="bg-white p-3.5 flex justify-between items-center relative">
                     <span className="text-black text-[17px]">Тип действия</span>
                     <div className="flex items-center gap-1">
