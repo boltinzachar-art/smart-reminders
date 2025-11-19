@@ -20,42 +20,47 @@ const App = () => {
     priority: 3
   });
 
-  // 1. Инициализация
+// 1. Инициализация Телеграма
   useEffect(() => {
     if (WebApp.initDataUnsafe.user) {
-      setUserId(WebApp.initDataUnsafe.user.id);
+      const id = WebApp.initDataUnsafe.user.id;
+      setUserId(id);
+      // alert(`Мой ID в Телеграм: ${id}`); // <--- РАСКОММЕНТИРУЙ ЭТО, ЧТОБЫ УЗНАТЬ СВОЙ ID
       WebApp.expand();
       WebApp.enableClosingConfirmation();
-      // Цвета iOS
       WebApp.setHeaderColor('#F2F2F7'); 
       WebApp.setBackgroundColor('#F2F2F7');
     } else {
       console.log("Browser Test Mode");
-      // setUserId(123456); // Раскомментируй для тестов
+      
+      // ЕСЛИ ТЫ ТЕСТИРУЕШЬ В БРАУЗЕРЕ (CHROME), А НЕ В ТЕЛЕГРАМЕ:
+      // 1. Раскомментируй строчку ниже
+      // 2. Впиши туда число 12345
+      // setUserId(12345); 
     }
   }, []);
 
-  // 2. Загрузка
-  useEffect(() => {
-    if (userId) {
-      loadTasks();
-    }
-  }, [userId]);
+  // ...
 
   const loadTasks = async () => {
     try {
+      // alert(`Загружаю задачи для ID: ${userId}`); // <--- ПРОВЕРКА ЗАГРУЗКИ
+
       let query = supabase
         .from('tasks')
         .select('*')
-        .eq('telegram_user_id', userId)
+        // .eq('telegram_user_id', userId) // <--- ВРЕМЕННО ЗАКОММЕНТИРУЙ ЭТУ СТРОКУ
         .eq('completed', false)
         .order('next_run', { ascending: true });
 
       const { data, error } = await query;
+      
       if (error) throw error;
+      
+      // alert(`Найдено задач: ${data?.length}`); // <--- СКОЛЬКО НАШЛОСЬ?
       setTasks(data || []);
     } catch (error) {
-      console.error('Error loading:', error);
+      alert('Ошибка загрузки: ' + error.message);
     }
   };
 
