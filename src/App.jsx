@@ -20,25 +20,18 @@ const App = () => {
     priority: 3
   });
 
-// 1. Инициализация Телеграма
+// 1. Инициализация (ВРЕМЕННО ОТКЛЮЧАЕМ)
+  /*
   useEffect(() => {
     if (WebApp.initDataUnsafe.user) {
-      const id = WebApp.initDataUnsafe.user.id;
-      setUserId(id);
-      // alert(`Мой ID в Телеграм: ${id}`); // <--- РАСКОММЕНТИРУЙ ЭТО, ЧТОБЫ УЗНАТЬ СВОЙ ID
+      setUserId(WebApp.initDataUnsafe.user.id);
       WebApp.expand();
       WebApp.enableClosingConfirmation();
       WebApp.setHeaderColor('#F2F2F7'); 
       WebApp.setBackgroundColor('#F2F2F7');
-    } else {
-      console.log("Browser Test Mode");
-      
-      // ЕСЛИ ТЫ ТЕСТИРУЕШЬ В БРАУЗЕРЕ (CHROME), А НЕ В ТЕЛЕГРАМЕ:
-      // 1. Раскомментируй строчку ниже
-      // 2. Впиши туда число 12345
-      // setUserId(12345); 
     }
   }, []);
+  */
 
   // ...
 
