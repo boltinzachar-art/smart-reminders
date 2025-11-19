@@ -63,10 +63,9 @@ const App = () => {
     }
   };
 
-  // === МГНОВЕННОЕ СОЗДАНИЕ ===
+// === МГНОВЕННОЕ СОЗДАНИЕ (ИСПРАВЛЕНО) ===
   const createTask = async () => {
     if (!newTask.title) return alert('Введите название');
-    // Для MVP ставим текущее время, если не выбрано
     const runTime = newTask.next_run || new Date().toISOString();
 
     let template = null;
@@ -74,7 +73,7 @@ const App = () => {
     if (newTask.type === 'whatsapp') template = { phone: "", message: newTask.title };
     if (newTask.type === 'web_search') template = { query: newTask.title };
 
-    // 1. Создаем объект задачи локально
+    // 1. Создаем объект задачи для экрана (с временным ID)
     const optimisticTask = {
       ...newTask,
       next_run: runTime,
@@ -82,31 +81,33 @@ const App = () => {
       status: 'active',
       completed: false,
       action_template: template,
-      // Временный ID для отрисовки (потом заменится настоящим)
       id: 'temp-' + Date.now() 
     };
 
-    // 2. Сразу показываем на экране
+    // 2. Показываем на экране
     setTasks(prev => [...prev, optimisticTask]);
     setShowAddModal(false);
     setNewTask({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
 
-    // 3. Отправляем в базу
+    // 3. Готовим объект для базы (УДАЛЯЕМ ID, чтобы база сгенерировала свой)
+    const { id, ...taskForDb } = optimisticTask;
+
     try {
-      const { data, error } = await supabase.from('tasks').insert([{
-        ...optimisticTask,
-        id: undefined // Удаляем временный ID перед отправкой
-      }]).select();
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert([ taskForDb ]) // Отправляем БЕЗ поля id
+        .select();
 
       if (error) throw error;
 
-      // Заменяем временную задачу на реальную из базы (чтобы был правильный ID)
+      // Заменяем временную задачу на реальную из базы
       if (data) {
         setTasks(prev => prev.map(t => t.id === optimisticTask.id ? data[0] : t));
       }
     } catch (error) {
+      console.error('Ошибка:', error);
       alert('Ошибка сохранения: ' + error.message);
-      loadTasks(); // Откат, если ошибка
+      loadTasks(); // Откат
     }
   };
 
