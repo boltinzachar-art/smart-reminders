@@ -27,12 +27,10 @@ const App = () => {
     if (WebApp.initDataUnsafe.user) {
       setUserId(WebApp.initDataUnsafe.user.id);
       WebApp.expand(); // Раскрываем на всю высоту
-      // Настраиваем цвета хедера телеграма под приложение
-      WebApp.setHeaderColor('#ffffff'); 
-      WebApp.setBackgroundColor('#ffffff');
+      WebApp.enableClosingConfirmation(); // Чтобы случайно не закрыть свайпом
     } else {
       console.log("Режим тестирования в браузере");
-      // setUserId(123456); // Для тестов
+      // setUserId(123456); // Раскомментируй для тестов в браузере
     }
   }, []);
 
@@ -191,24 +189,24 @@ const App = () => {
   const overdueCount = tasks.filter(t => new Date(t.next_run) < new Date() && t.status === 'active').length;
 
   return (
-    // h-[100dvh] гарантирует, что приложение займет ровно видимую часть экрана телефона
     <div className="h-[100dvh] flex flex-col bg-white text-black font-sans">
       
-      {/* === ШАПКА (Фиксированная сверху) === */}
-      <div className="bg-white border-b border-gray-200 p-4 z-10">
+      {/* === ШАПКА (Исправлена проблема с наездом на статус бар) === */}
+      {/* Добавили pt-14, чтобы текст начинался ниже системной кнопки закрытия */}
+      <div className="bg-white border-b border-gray-200 px-4 pb-4 pt-14 z-10 shadow-sm">
         <div className="flex justify-between items-center mb-3">
           <div>
-            <h1 className="text-2xl font-black text-black">Мои задачи</h1>
+            <h1 className="text-3xl font-black text-black tracking-tight">Мои задачи</h1>
             {overdueCount > 0 && <span className="text-sm text-red-600 font-bold">Просрочено: {overdueCount}</span>}
           </div>
         </div>
 
         {/* Поиск */}
         <div className="relative mb-3">
-          <Search className="absolute left-3 top-2.5 text-gray-500" size={18} />
+          <Search className="absolute left-3 top-2.5 text-gray-400" size={20} />
           <input
-            className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-xl text-sm text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Поиск..."
+            className="w-full pl-10 pr-4 py-3 bg-gray-100 rounded-2xl text-base text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            placeholder="Найти задачу..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
           />
@@ -220,7 +218,7 @@ const App = () => {
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition ${filter === f ? 'bg-black text-white' : 'bg-gray-100 text-black border border-gray-200'}`}
+              className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${filter === f ? 'bg-black text-white' : 'bg-gray-100 text-gray-600 border border-transparent'}`}
             >
               {f === 'all' ? 'Все' : f === 'today' ? 'Сегодня' : f === 'overdue' ? 'Просрочено' : 'Будущие'}
             </button>
@@ -228,16 +226,17 @@ const App = () => {
         </div>
       </div>
 
-      {/* === СПИСОК ЗАДАЧ (Скроллится отдельно) === */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-32">
+      {/* === СПИСОК ЗАДАЧ === */}
+      {/* Добавили pb-32, чтобы нижние задачи не перекрывались кнопкой Плюс */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-36">
         {filteredList.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-            <Calendar size={48} className="mb-2 opacity-20" />
-            <p>Задач пока нет</p>
+          <div className="flex flex-col items-center justify-center h-64 text-gray-300">
+            <Calendar size={64} className="mb-4 opacity-20" />
+            <p className="font-medium">Задач пока нет</p>
           </div>
         ) : (
           filteredList.map(task => (
-            <div key={task.id} className={`bg-white p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-gray-100 ${new Date(task.next_run) < new Date() ? 'border-l-4 border-l-red-500' : ''}`}>
+            <div key={task.id} className={`bg-white p-4 rounded-2xl shadow-sm border border-gray-100 active:scale-[0.99] transition-transform ${new Date(task.next_run) < new Date() ? 'border-l-4 border-l-red-500' : ''}`}>
               <div className="flex items-start gap-3">
                 <div className="text-2xl mt-1">{getTypeIcon(task.type)}</div>
                 <div className="flex-1 min-w-0">
@@ -246,7 +245,7 @@ const App = () => {
                     <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${getPriorityColor(task.priority)}`}>P{task.priority}</span>
                   </div>
                   
-                  {task.description && <p className="text-gray-800 text-sm mt-1 line-clamp-2">{task.description}</p>}
+                  {task.description && <p className="text-gray-600 text-sm mt-1 line-clamp-2">{task.description}</p>}
 
                   <div className="flex items-center gap-3 mt-3 text-xs font-medium text-gray-500">
                     <span className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-md">
@@ -261,72 +260,80 @@ const App = () => {
               {task.type !== 'reminder' && (
                 <button
                   onClick={() => performAction(task)}
-                  className="mt-3 w-full py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 active:scale-95 transition shadow-sm"
+                  className="mt-3 w-full py-3 bg-blue-600 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-blue-700 active:scale-95 transition shadow-sm"
                 >
-                  <ExternalLink size={16} /> Выполнить действие
+                  <ExternalLink size={18} /> Выполнить действие
                 </button>
               )}
 
               {/* Кнопки управления */}
               <div className="flex justify-end gap-4 mt-3 pt-3 border-t border-gray-100">
-                <button onClick={() => completeTask(task.id, task)} className="text-green-600 hover:text-green-700 flex items-center gap-1 text-sm font-medium"><CheckCircle size={18} /> Сделано</button>
-                <button onClick={() => toggleTaskStatus(task.id, task.status)} className="text-blue-600 hover:text-blue-700"><Pause size={18} /></button>
-                <button onClick={() => deleteTask(task.id)} className="text-red-500 hover:text-red-600"><Trash2 size={18} /></button>
+                <button onClick={() => completeTask(task.id, task)} className="text-green-600 font-semibold flex items-center gap-1 text-sm p-1"><CheckCircle size={18} /> Сделано</button>
+                <button onClick={() => toggleTaskStatus(task.id, task.status)} className="text-blue-600 p-1"><Pause size={18} /></button>
+                <button onClick={() => deleteTask(task.id)} className="text-red-400 p-1"><Trash2 size={18} /></button>
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* === КНОПКА ПЛЮС (Фиксирована, поднята выше) === */}
+      {/* === КНОПКА ПЛЮС (Поднята выше для iPhone) === */}
+      {/* bottom-24 гарантирует, что кнопка будет выше системной полоски */}
       <button
         onClick={() => setShowAddModal(true)}
-        className="fixed bottom-10 right-6 w-14 h-14 bg-black text-white rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.3)] flex items-center justify-center hover:bg-gray-800 active:scale-90 transition z-50"
+        className="fixed bottom-24 right-5 w-16 h-16 bg-black text-white rounded-full shadow-xl flex items-center justify-center hover:bg-gray-800 active:scale-90 transition z-50"
       >
-        <Plus size={28} strokeWidth={3} />
+        <Plus size={32} strokeWidth={3} />
       </button>
 
       {/* === МОДАЛКА СОЗДАНИЯ === */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end justify-center backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto animate-slide-up pb-10">
-            <h2 className="text-2xl font-black text-black mb-6">Новая задача</h2>
+          {/* pb-10 добавлен для отступа снизу на iPhone */}
+          <div className="bg-white w-full rounded-t-3xl p-6 max-h-[85vh] overflow-y-auto animate-slide-up pb-12">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-black text-black">Новая задача</h2>
+              <button onClick={() => setShowAddModal(false)} className="text-gray-400 p-2">
+                 {/* Иконка закрытия */}
+              </button>
+            </div>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
-                <label className="text-xs font-bold text-gray-500 ml-1 uppercase">Название</label>
+                <label className="text-xs font-bold text-gray-400 ml-1 uppercase tracking-wider">Что сделать?</label>
                 <input
-                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-black font-medium focus:border-black focus:outline-none transition"
-                  placeholder="Что нужно сделать?"
+                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-black font-semibold text-lg focus:border-black focus:outline-none transition mt-1"
+                  placeholder="Название задачи"
                   value={newTask.title}
                   onChange={e => setNewTask({ ...newTask, title: e.target.value })}
+                  autoFocus
                 />
               </div>
 
               <div>
-                 <label className="text-xs font-bold text-gray-500 ml-1 uppercase">Описание</label>
+                 <label className="text-xs font-bold text-gray-400 ml-1 uppercase tracking-wider">Детали</label>
                  <textarea
-                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-black focus:border-black focus:outline-none transition"
-                  placeholder="Детали..."
-                  rows={2}
+                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-black focus:border-black focus:outline-none transition mt-1"
+                  placeholder="Описание, ссылка или текст сообщения..."
+                  rows={3}
                   value={newTask.description}
                   onChange={e => setNewTask({ ...newTask, description: e.target.value })}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 ml-1 uppercase">Тип</label>
-                  <select className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-black font-medium" value={newTask.type} onChange={e => setNewTask({ ...newTask, type: e.target.value })}>
-                    <option value="reminder">Напоминание</option>
-                    <option value="email">Email</option>
-                    <option value="whatsapp">WhatsApp</option>
-                    <option value="web_search">Поиск</option>
+                  <label className="text-xs font-bold text-gray-400 ml-1 uppercase tracking-wider">Тип</label>
+                  <select className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-black font-bold mt-1 h-12" value={newTask.type} onChange={e => setNewTask({ ...newTask, type: e.target.value })}>
+                    <option value="reminder">🔔 Напоминание</option>
+                    <option value="email">📧 Email</option>
+                    <option value="whatsapp">💬 WhatsApp</option>
+                    <option value="web_search">🔍 Поиск</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-500 ml-1 uppercase">Повтор</label>
-                  <select className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-black font-medium" value={newTask.frequency} onChange={e => setNewTask({ ...newTask, frequency: e.target.value })}>
+                  <label className="text-xs font-bold text-gray-400 ml-1 uppercase tracking-wider">Повтор</label>
+                  <select className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-black font-bold mt-1 h-12" value={newTask.frequency} onChange={e => setNewTask({ ...newTask, frequency: e.target.value })}>
                     <option value="once">Нет</option>
                     <option value="daily">Каждый день</option>
                     <option value="weekly">Раз в неделю</option>
@@ -336,16 +343,16 @@ const App = () => {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-gray-500 ml-1 uppercase">Время</label>
+                <label className="text-xs font-bold text-gray-400 ml-1 uppercase tracking-wider">Когда?</label>
                 <input
                   type="datetime-local"
-                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-black font-medium"
+                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-black font-bold mt-1 h-12"
                   value={newTask.next_run}
                   onChange={e => setNewTask({ ...newTask, next_run: e.target.value })}
                 />
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-6">
                 <button onClick={createTask} className="flex-1 bg-black text-white py-4 rounded-2xl font-bold text-lg shadow-lg active:scale-95 transition">
                   Создать
                 </button>
