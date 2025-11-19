@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient'; // Исправлен путь
-import WebApp from '@twa-dev/sdk'; // Исправлен импорт
-import { Plus, Calendar, CheckCircle, Clock, Trash2, Play, Pause, Search, ExternalLink } from 'lucide-react';
+import { supabase } from './supabaseClient';
+import WebApp from '@twa-dev/sdk';
+import { Plus, Calendar, CheckCircle, Clock, Trash2, Pause, Play, Search, ExternalLink } from 'lucide-react';
 
 const App = () => {
   const [tasks, setTasks] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [filter, setFilter] = useState('all'); 
+  const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [userId, setUserId] = useState(null);
 
@@ -19,22 +19,24 @@ const App = () => {
     next_run: '',
     priority: 3,
     category: '',
-    action_template: null 
+    action_template: null
   });
 
   // 1. Инициализация Телеграма
   useEffect(() => {
     if (WebApp.initDataUnsafe.user) {
       setUserId(WebApp.initDataUnsafe.user.id);
-      WebApp.expand();
+      WebApp.expand(); // Раскрываем на всю высоту
+      // Настраиваем цвета хедера телеграма под приложение
+      WebApp.setHeaderColor('#ffffff'); 
+      WebApp.setBackgroundColor('#ffffff');
     } else {
-      // Для тестов в браузере
       console.log("Режим тестирования в браузере");
-      // setUserId(123456); // Раскомментируй для теста в браузере
+      // setUserId(123456); // Для тестов
     }
   }, []);
 
-  // 2. Загрузка задач при появлении userId
+  // 2. Загрузка задач
   useEffect(() => {
     if (userId) {
       loadTasks();
@@ -48,7 +50,7 @@ const App = () => {
       let query = supabase
         .from('tasks')
         .select('*')
-        .eq('telegram_user_id', userId) // БЕРЕМ ТОЛЬКО ЗАДАЧИ ЭТОГО ЮЗЕРА
+        .eq('telegram_user_id', userId)
         .order('next_run', { ascending: true });
 
       const { data, error } = await query;
@@ -62,7 +64,6 @@ const App = () => {
   const createTask = async () => {
     if (!newTask.title || !newTask.next_run) return alert('Заполни название и время');
 
-    // Простая генерация шаблона действия
     let template = null;
     if (newTask.type === 'email') template = { to: "", subject: newTask.title, body: newTask.description };
     if (newTask.type === 'whatsapp') template = { phone: "", message: newTask.title };
@@ -77,7 +78,7 @@ const App = () => {
       }]);
 
       if (error) throw error;
-      
+
       setShowAddModal(false);
       setNewTask({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3, category: '', action_template: null });
       loadTasks();
@@ -88,26 +89,19 @@ const App = () => {
 
   const completeTask = async (taskId, task) => {
     try {
-      // Логика повторения
       if (task.frequency !== 'once') {
         const nextRun = calculateNextRun(task.next_run, task.frequency);
-        await supabase.from('tasks').update({ 
-            next_run: nextRun, 
-            last_run: new Date().toISOString() 
+        await supabase.from('tasks').update({
+          next_run: nextRun,
+          last_run: new Date().toISOString()
         }).eq('id', taskId);
       } else {
-        await supabase.from('tasks').update({ 
-            status: 'completed', 
-            completed: true 
+        await supabase.from('tasks').update({
+          status: 'completed',
+          completed: true
         }).eq('id', taskId);
       }
-      
-      // Лог
-      await supabase.from('task_log').insert([{ 
-          task_id: taskId, 
-          status: 'completed' 
-      }]);
-      
+      await supabase.from('task_log').insert([{ task_id: taskId, status: 'completed' }]);
       loadTasks();
     } catch (error) {
       console.error('Ошибка завершения:', error);
@@ -126,12 +120,9 @@ const App = () => {
     loadTasks();
   };
 
-  // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
-
   const performAction = (task) => {
     const type = task.type;
     const text = encodeURIComponent(task.title + (task.description ? `\n${task.description}` : ''));
-
     if (type === 'email') window.open(`mailto:?subject=${encodeURIComponent(task.title)}&body=${text}`);
     if (type === 'whatsapp') window.open(`https://wa.me/?text=${text}`);
     if (type === 'web_search') window.open(`https://www.google.com/search?q=${encodeURIComponent(task.title)}`);
@@ -148,14 +139,14 @@ const App = () => {
 
   const getFilteredTasks = () => {
     const now = new Date();
-    const todayStart = new Date(now.setHours(0,0,0,0));
+    const todayStart = new Date(now.setHours(0, 0, 0, 0));
     const tomorrowStart = new Date(todayStart);
     tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
     let filtered = tasks;
 
     if (searchQuery) {
-      filtered = filtered.filter(t => 
+      filtered = filtered.filter(t =>
         t.title.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
@@ -191,155 +182,179 @@ const App = () => {
   };
 
   const getPriorityColor = (p) => {
-    if (p >= 5) return 'bg-red-100 text-red-800';
-    if (p === 4) return 'bg-orange-100 text-orange-800';
-    return 'bg-green-100 text-green-800';
+    if (p >= 5) return 'bg-red-100 text-red-900';
+    if (p === 4) return 'bg-orange-100 text-orange-900';
+    return 'bg-green-100 text-green-900';
   };
 
   const filteredList = getFilteredTasks();
   const overdueCount = tasks.filter(t => new Date(t.next_run) < new Date() && t.status === 'active').length;
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans pb-20">
-      {/* Шапка */}
-      <div className="bg-white shadow-sm p-4 sticky top-0 z-10">
-        <div className="flex justify-between items-center mb-4">
+    // h-[100dvh] гарантирует, что приложение займет ровно видимую часть экрана телефона
+    <div className="h-[100dvh] flex flex-col bg-white text-black font-sans">
+      
+      {/* === ШАПКА (Фиксированная сверху) === */}
+      <div className="bg-white border-b border-gray-200 p-4 z-10">
+        <div className="flex justify-between items-center mb-3">
           <div>
-             <h1 className="text-2xl font-bold text-gray-900">Мои задачи</h1>
-             {overdueCount > 0 && <span className="text-xs text-red-600 font-bold">Просрочено: {overdueCount}</span>}
+            <h1 className="text-2xl font-black text-black">Мои задачи</h1>
+            {overdueCount > 0 && <span className="text-sm text-red-600 font-bold">Просрочено: {overdueCount}</span>}
           </div>
-          <button onClick={() => setShowAddModal(true)} className="bg-blue-600 text-white p-2 rounded-full shadow hover:bg-blue-700">
-            <Plus size={24} />
-          </button>
         </div>
 
         {/* Поиск */}
         <div className="relative mb-3">
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-            <input 
-              className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Поиск..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
+          <Search className="absolute left-3 top-2.5 text-gray-500" size={18} />
+          <input
+            className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-xl text-sm text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Поиск..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
         </div>
 
         {/* Фильтры */}
-        <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar">
+        <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
           {['all', 'today', 'overdue', 'upcoming'].map(f => (
-             <button 
-               key={f}
-               onClick={() => setFilter(f)}
-               className={`px-4 py-1.5 rounded-full text-sm whitespace-nowrap transition ${filter === f ? 'bg-blue-600 text-white' : 'bg-white border text-gray-600'}`}
-             >
-               {f === 'all' ? 'Все' : f === 'today' ? 'Сегодня' : f === 'overdue' ? 'Просрочено' : 'Будущие'}
-             </button>
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition ${filter === f ? 'bg-black text-white' : 'bg-gray-100 text-black border border-gray-200'}`}
+            >
+              {f === 'all' ? 'Все' : f === 'today' ? 'Сегодня' : f === 'overdue' ? 'Просрочено' : 'Будущие'}
+            </button>
           ))}
         </div>
       </div>
 
-      {/* Список задач */}
-      <div className="p-4 space-y-3">
+      {/* === СПИСОК ЗАДАЧ (Скроллится отдельно) === */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-32">
         {filteredList.length === 0 ? (
-           <div className="text-center py-10 text-gray-400">Нет задач</div>
+          <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+            <Calendar size={48} className="mb-2 opacity-20" />
+            <p>Задач пока нет</p>
+          </div>
         ) : (
-           filteredList.map(task => (
-             <div key={task.id} className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${new Date(task.next_run) < new Date() ? 'border-l-red-500' : 'border-l-blue-500'}`}>
-                <div className="flex items-start gap-3">
-                   <div className="text-2xl">{getTypeIcon(task.type)}</div>
-                   <div className="flex-1 min-w-0">
-                      <div className="flex justify-between">
-                         <h3 className="font-semibold text-gray-900 truncate">{task.title}</h3>
-                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${getPriorityColor(task.priority)}`}>P{task.priority}</span>
-                      </div>
-                      {task.description && <p className="text-gray-500 text-xs mt-0.5 line-clamp-2">{task.description}</p>}
-                      
-                      <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
-                         <Clock size={12} /> {formatDateTime(task.next_run)}
-                         {task.frequency !== 'once' && <span className="bg-gray-100 px-1 rounded">🔁 {task.frequency}</span>}
-                      </div>
-                   </div>
-                </div>
+          filteredList.map(task => (
+            <div key={task.id} className={`bg-white p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-gray-100 ${new Date(task.next_run) < new Date() ? 'border-l-4 border-l-red-500' : ''}`}>
+              <div className="flex items-start gap-3">
+                <div className="text-2xl mt-1">{getTypeIcon(task.type)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-bold text-black text-lg leading-tight truncate mr-2">{task.title}</h3>
+                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${getPriorityColor(task.priority)}`}>P{task.priority}</span>
+                  </div>
+                  
+                  {task.description && <p className="text-gray-800 text-sm mt-1 line-clamp-2">{task.description}</p>}
 
-                {/* Кнопка Действия */}
-                {task.type !== 'reminder' && (
-                    <button 
-                      onClick={() => performAction(task)}
-                      className="mt-3 w-full py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-blue-100 active:scale-95 transition"
-                    >
-                      <ExternalLink size={16}/> Выполнить действие
-                    </button>
-                )}
-
-                {/* Кнопки управления */}
-                <div className="flex justify-end gap-4 mt-3 pt-2 border-t border-gray-50">
-                   <button onClick={() => completeTask(task.id, task)} className="text-green-600 hover:text-green-700 flex items-center gap-1 text-sm"><CheckCircle size={18}/> Сделано</button>
-                   <button onClick={() => toggleTaskStatus(task.id, task.status)} className="text-blue-400 hover:text-blue-500"><Pause size={18}/></button>
-                   <button onClick={() => deleteTask(task.id)} className="text-red-400 hover:text-red-500"><Trash2 size={18}/></button>
+                  <div className="flex items-center gap-3 mt-3 text-xs font-medium text-gray-500">
+                    <span className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-md">
+                      <Clock size={12} /> {formatDateTime(task.next_run)}
+                    </span>
+                    {task.frequency !== 'once' && <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md">🔁 {task.frequency}</span>}
+                  </div>
                 </div>
-             </div>
-           ))
+              </div>
+
+              {/* Кнопка Действия */}
+              {task.type !== 'reminder' && (
+                <button
+                  onClick={() => performAction(task)}
+                  className="mt-3 w-full py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 active:scale-95 transition shadow-sm"
+                >
+                  <ExternalLink size={16} /> Выполнить действие
+                </button>
+              )}
+
+              {/* Кнопки управления */}
+              <div className="flex justify-end gap-4 mt-3 pt-3 border-t border-gray-100">
+                <button onClick={() => completeTask(task.id, task)} className="text-green-600 hover:text-green-700 flex items-center gap-1 text-sm font-medium"><CheckCircle size={18} /> Сделано</button>
+                <button onClick={() => toggleTaskStatus(task.id, task.status)} className="text-blue-600 hover:text-blue-700"><Pause size={18} /></button>
+                <button onClick={() => deleteTask(task.id)} className="text-red-500 hover:text-red-600"><Trash2 size={18} /></button>
+              </div>
+            </div>
+          ))
         )}
       </div>
 
-      {/* Модалка создания */}
+      {/* === КНОПКА ПЛЮС (Фиксирована, поднята выше) === */}
+      <button
+        onClick={() => setShowAddModal(true)}
+        className="fixed bottom-10 right-6 w-14 h-14 bg-black text-white rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.3)] flex items-center justify-center hover:bg-gray-800 active:scale-90 transition z-50"
+      >
+        <Plus size={28} strokeWidth={3} />
+      </button>
+
+      {/* === МОДАЛКА СОЗДАНИЯ === */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center backdrop-blur-sm">
-           <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-6 max-h-[85vh] overflow-y-auto animate-slide-up">
-              <h2 className="text-xl font-bold mb-4">Новая задача</h2>
-              
-              <div className="space-y-3">
-                 <input 
-                    className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
-                    placeholder="Название задачи"
-                    value={newTask.title}
-                    onChange={e => setNewTask({...newTask, title: e.target.value})}
-                 />
-                 <textarea 
-                    className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
-                    placeholder="Описание / Текст сообщения / Запрос..."
-                    rows={2}
-                    value={newTask.description}
-                    onChange={e => setNewTask({...newTask, description: e.target.value})}
-                 />
-                 
-                 <div className="grid grid-cols-2 gap-3">
-                    <div>
-                       <label className="text-xs text-gray-500 ml-1">Тип</label>
-                       <select className="w-full p-3 bg-gray-50 border rounded-xl" value={newTask.type} onChange={e => setNewTask({...newTask, type: e.target.value})}>
-                          <option value="reminder">Напоминание</option>
-                          <option value="email">Email</option>
-                          <option value="whatsapp">WhatsApp</option>
-                          <option value="web_search">Поиск в сети</option>
-                       </select>
-                    </div>
-                    <div>
-                       <label className="text-xs text-gray-500 ml-1">Повтор</label>
-                       <select className="w-full p-3 bg-gray-50 border rounded-xl" value={newTask.frequency} onChange={e => setNewTask({...newTask, frequency: e.target.value})}>
-                          <option value="once">Нет</option>
-                          <option value="daily">Ежедневно</option>
-                          <option value="weekly">Раз в неделю</option>
-                          <option value="monthly">Раз в месяц</option>
-                       </select>
-                    </div>
-                 </div>
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-end justify-center backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto animate-slide-up pb-10">
+            <h2 className="text-2xl font-black text-black mb-6">Новая задача</h2>
 
-                 <div>
-                    <label className="text-xs text-gray-500 ml-1">Когда</label>
-                    <input 
-                      type="datetime-local" 
-                      className="w-full p-3 bg-gray-50 border rounded-xl"
-                      value={newTask.next_run}
-                      onChange={e => setNewTask({...newTask, next_run: e.target.value})}
-                    />
-                 </div>
-
-                 <div className="flex gap-3 pt-4">
-                    <button onClick={createTask} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition">Создать</button>
-                    <button onClick={() => setShowAddModal(false)} className="flex-1 bg-gray-100 text-gray-600 py-3 rounded-xl font-medium">Отмена</button>
-                 </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-gray-500 ml-1 uppercase">Название</label>
+                <input
+                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-black font-medium focus:border-black focus:outline-none transition"
+                  placeholder="Что нужно сделать?"
+                  value={newTask.title}
+                  onChange={e => setNewTask({ ...newTask, title: e.target.value })}
+                />
               </div>
-           </div>
+
+              <div>
+                 <label className="text-xs font-bold text-gray-500 ml-1 uppercase">Описание</label>
+                 <textarea
+                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-black focus:border-black focus:outline-none transition"
+                  placeholder="Детали..."
+                  rows={2}
+                  value={newTask.description}
+                  onChange={e => setNewTask({ ...newTask, description: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 ml-1 uppercase">Тип</label>
+                  <select className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-black font-medium" value={newTask.type} onChange={e => setNewTask({ ...newTask, type: e.target.value })}>
+                    <option value="reminder">Напоминание</option>
+                    <option value="email">Email</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="web_search">Поиск</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 ml-1 uppercase">Повтор</label>
+                  <select className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-black font-medium" value={newTask.frequency} onChange={e => setNewTask({ ...newTask, frequency: e.target.value })}>
+                    <option value="once">Нет</option>
+                    <option value="daily">Каждый день</option>
+                    <option value="weekly">Раз в неделю</option>
+                    <option value="monthly">Раз в месяц</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-500 ml-1 uppercase">Время</label>
+                <input
+                  type="datetime-local"
+                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-black font-medium"
+                  value={newTask.next_run}
+                  onChange={e => setNewTask({ ...newTask, next_run: e.target.value })}
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button onClick={createTask} className="flex-1 bg-black text-white py-4 rounded-2xl font-bold text-lg shadow-lg active:scale-95 transition">
+                  Создать
+                </button>
+                <button onClick={() => setShowAddModal(false)} className="flex-1 bg-gray-100 text-black py-4 rounded-2xl font-bold text-lg active:scale-95 transition">
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
