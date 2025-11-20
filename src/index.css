@@ -29,3 +29,14 @@ html, body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+
+/* Анимация для кружочка: 3 мигания по 0.5 сек = 1.5 сек всего */
+@keyframes blink-3 {
+  0%, 100% { background-color: transparent; border-color: #D1D5DB; }
+  50% { background-color: #3B82F6; border-color: #3B82F6; }
+}
+
+.animate-blink-3 {
+  animation: blink-3 0.5s ease-in-out 3;
+}
