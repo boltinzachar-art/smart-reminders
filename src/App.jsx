@@ -1,10 +1,24 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import WebApp from '@twa-dev/sdk';
-import { Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, CloudOff, ChevronRight } from 'lucide-react';
+import { 
+  Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
+  CloudOff, ChevronRight, Calendar as CalendarIcon, Clock, MapPin, Hash, 
+  Flag, Camera, X, List 
+} from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+// --- КОМПОНЕНТ IOS SWITCH (ТОГГЛ) ---
+const IOSSwitch = ({ checked, onChange }) => (
+  <button 
+    onClick={() => onChange(!checked)}
+    className={`w-[51px] h-[31px] rounded-full p-0.5 transition-colors duration-300 focus:outline-none ${checked ? 'bg-[#34C759]' : 'bg-[#E9E9EA]'}`}
+  >
+    <div className={`w-[27px] h-[27px] bg-white rounded-full shadow-sm transition-transform duration-300 ${checked ? 'translate-x-[20px]' : 'translate-x-0'}`} />
+  </button>
+);
 
 // --- ЛОГИКА ---
 const calculateNextRun = (current, freq) => {
@@ -36,7 +50,7 @@ const performAction = (e, task) => {
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
-// --- КАРТОЧКА ---
+// --- КАРТОЧКА ЗАДАЧИ ---
 const TaskItem = ({ task, actions, isTrash }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [flashing, setFlashing] = useState(false);
@@ -51,7 +65,7 @@ const TaskItem = ({ task, actions, isTrash }) => {
   const isOverdue = task.next_run && new Date(task.next_run) < new Date() && !task.completed;
 
   return (
-    <div ref={setNodeRef} style={style} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-2 transition-all ${flashing ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
+    <div ref={setNodeRef} style={style} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${flashing ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
       {!isTrash && (
         <div {...attributes} {...listeners} style={{ touchAction: 'none' }} className="mt-1 p-2 -ml-2 text-gray-300 cursor-grab active:cursor-grabbing touch-none">
             <GripVertical size={20} />
@@ -65,7 +79,10 @@ const TaskItem = ({ task, actions, isTrash }) => {
         <button onClick={() => actions.restore(task.id)} className="mt-0.5 text-blue-600 p-1"><RotateCcw size={20} /></button>
       )}
       <div className="flex-1 min-w-0 pt-0.5">
-        <div className={`text-[17px] leading-tight break-words transition-colors ${task.completed || flashing ? 'text-gray-400 line-through' : 'text-black'}`}>{task.title}</div>
+        <div className="flex items-center gap-2">
+             <div className={`text-[17px] leading-tight break-words transition-colors ${task.completed || flashing ? 'text-gray-400 line-through' : 'text-black'}`}>{task.title}</div>
+             {task.priority === 5 && <Flag size={14} className="text-orange-500 fill-orange-500" />}
+        </div>
         {task.description && <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>}
         <div className="flex items-center flex-wrap gap-2 mt-1.5">
           {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run)}</span>}
@@ -80,7 +97,7 @@ const TaskItem = ({ task, actions, isTrash }) => {
   );
 };
 
-// --- APP ---
+// --- MAIN APP ---
 const App = () => {
   const [tasks, setTasks] = useState(() => JSON.parse(localStorage.getItem('tasks') || '[]'));
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -88,7 +105,14 @@ const App = () => {
   const [modal, setModal] = useState(false);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
-  const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
+  
+  // NEW TASK STATE
+  const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 3 });
+  // Раздельные стейты для логики iOS тогглов
+  const [hasDate, setHasDate] = useState(false);
+  const [hasTime, setHasTime] = useState(false);
+  const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
+  const [timeVal, setTimeVal] = useState(new Date().toTimeString().slice(0, 5));
 
   const sensors = useSensors(useSensor(PointerSensor), useSensor(TouchSensor, { activationConstraint: { tolerance: 5 } }));
 
@@ -97,9 +121,7 @@ const App = () => {
     window.addEventListener('online', handleStatus); window.addEventListener('offline', handleStatus);
     if (WebApp.initDataUnsafe.user) {
       setUserId(WebApp.initDataUnsafe.user.id);
-      WebApp.expand(); 
-      try { WebApp.disableVerticalSwipes(); } catch (e) {}
-      WebApp.enableClosingConfirmation(); 
+      WebApp.expand(); try { WebApp.disableVerticalSwipes(); } catch (e) {} WebApp.enableClosingConfirmation(); 
       WebApp.setHeaderColor('#F2F2F7'); WebApp.setBackgroundColor('#F2F2F7');
     } else { setUserId(777); }
     return () => { window.removeEventListener('online', handleStatus); window.removeEventListener('offline', handleStatus); };
@@ -118,19 +140,30 @@ const App = () => {
         setTasks(Array.from(merged.values()).sort((a,b) => a.position - b.position));
       }
     };
-    sync();
-    const interval = setInterval(sync, 30000);
-    return () => clearInterval(interval);
+    sync(); const i = setInterval(sync, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
 
   const actions = {
     create: async () => {
-      if (!newT.title) return alert('Название?');
+      if (!newT.title) return alert('Введите название');
       const tempId = 'temp-' + Date.now();
-      const task = { ...newT, telegram_user_id: userId, status: 'active', completed: false, is_deleted: false, position: tasks.length, id: tempId, next_run: newT.next_run || null };
+      
+      // Собираем дату из тогглов
+      let finalDate = null;
+      if (hasDate) {
+          finalDate = dateVal;
+          if (hasTime) finalDate += 'T' + timeVal;
+          else finalDate += 'T09:00'; // Дефолтное утро, если время выключено
+      }
+
+      const task = { ...newT, next_run: finalDate, telegram_user_id: userId, status: 'active', completed: false, is_deleted: false, position: tasks.length, id: tempId };
+      
       setTasks(prev => [...prev, task]);
       setModal(false);
-      setNewT({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
+      // Reset
+      setNewT({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 3 });
+      setHasDate(false); setHasTime(false);
+
       if (isOnline) {
         const { id, ...dbTask } = task;
         const { data } = await supabase.from('tasks').insert([dbTask]).select();
@@ -192,7 +225,7 @@ const App = () => {
 
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col">
-      {/* HEADER (Поднял выше pt-2 вместо pt-14) */}
+      {/* HEADER */}
       <div className="px-4 pt-2 pb-2 bg-[#F2F2F7] sticky top-0 z-20">
         <div className="flex justify-between items-center mb-3">
            <h1 className="text-3xl font-bold ml-1">{filter === 'trash' ? 'Корзина' : filter === 'completed' ? 'Готовые' : 'Напоминания'}</h1>
@@ -209,7 +242,6 @@ const App = () => {
         </div>
       </div>
 
-      {/* LIST (Увеличил отступ снизу pb-36, чтобы не перекрывалось кнопкой) */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
         <div className="flex-1 px-4 pb-36 space-y-3">
           <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
@@ -220,52 +252,132 @@ const App = () => {
         </div>
       </DndContext>
 
-      {/* НИЖНЯЯ КНОПКА (Во всю ширину) */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7] z-30">
-         <button 
-           onClick={() => setModal(true)} 
-           className="w-full bg-blue-600 text-white font-bold text-lg py-3.5 rounded-xl shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
-         >
-            <Plus size={24} strokeWidth={3} />
-            Новое напоминание
+         <button onClick={() => setModal(true)} className="w-full bg-blue-600 text-white font-bold text-lg py-3.5 rounded-xl shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2">
+            <Plus size={24} strokeWidth={3} /> Новое напоминание
          </button>
       </div>
 
-      {/* MODAL */}
+      {/* --- МОДАЛКА В СТИЛЕ IOS --- */}
       {modal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
-           <div className="bg-gray-100 w-full sm:max-w-md rounded-t-2xl p-4 max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up">
-              <div className="flex justify-between mb-4 px-2">
+           <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[90vh] flex flex-col shadow-2xl animate-slide-up">
+              
+              {/* 1. Header Modal */}
+              <div className="flex justify-between items-center px-4 py-4 bg-[#F2F2F7] rounded-t-2xl border-b border-gray-200/50">
                  <button onClick={() => setModal(false)} className="text-blue-600 text-[17px]">Отмена</button>
-                 <span className="font-bold text-[17px]">Новое</span>
-                 <button onClick={actions.create} className="text-blue-600 font-bold text-[17px]">Добавить</button>
+                 <span className="font-bold text-black text-[17px]">Новое</span>
+                 <button onClick={actions.create} className={`text-[17px] font-bold ${newT.title ? 'text-blue-600' : 'text-gray-400'}`}>Добавить</button>
               </div>
-              <div className="bg-white rounded-xl mb-6 overflow-hidden">
-                 <input className="w-full p-4 border-b border-gray-100 outline-none text-[17px]" placeholder="Название" value={newT.title} onChange={e => setNewT({...newT, title: e.target.value})} autoFocus />
-                 <textarea className="w-full p-4 h-24 outline-none text-[17px] resize-none" placeholder="Заметки" value={newT.description} onChange={e => setNewT({...newT, description: e.target.value})} />
-              </div>
-              <div className="bg-white rounded-xl overflow-hidden space-y-[1px] bg-gray-200">
-                 {[
-                   { label: 'Время', val: newT.next_run, set: v => setNewT({...newT, next_run: v}), type: 'datetime-local' },
-                   { label: 'Тип', val: newT.type, set: v => setNewT({...newT, type: v}), opts: [['reminder','Нет'],['email','Email'],['whatsapp','WhatsApp'],['web_search','Поиск']] },
-                   { label: 'Повтор', val: newT.frequency, set: v => setNewT({...newT, frequency: v}), opts: [['once','Никогда'],['daily','Ежедневно'],['weekly','Еженедельно'],['monthly','Ежемесячно']] }
-                 ].map((field, i) => (
-                   <div key={i} className="bg-white p-3.5 flex justify-between items-center">
-                      <span className="text-[17px]">{field.label}</span>
-                      {field.type === 'datetime-local' ? (
-                        <input type="datetime-local" className="bg-gray-100 rounded p-1 outline-none" value={field.val} onChange={e => field.set(e.target.value)} />
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <select className="bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4" value={field.val} onChange={e => field.set(e.target.value)}>
-                             {field.opts.map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-                          </select>
-                          <ChevronRight size={16} className="text-gray-300" />
+
+              {/* 2. Content Scroll */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                 
+                 {/* BLOCK 1: TITLE & NOTES */}
+                 <div className="bg-white rounded-xl overflow-hidden shadow-sm">
+                    <input 
+                        className="w-full p-4 text-[17px] border-b border-gray-100 focus:outline-none placeholder-gray-400 text-black" 
+                        placeholder="Название" 
+                        value={newT.title} 
+                        onChange={e => setNewT({...newT, title: e.target.value})} 
+                        autoFocus 
+                    />
+                    <textarea 
+                        className="w-full p-4 text-[15px] focus:outline-none resize-none h-24 placeholder-gray-400 text-black" 
+                        placeholder="Заметки" 
+                        value={newT.description} 
+                        onChange={e => setNewT({...newT, description: e.target.value})} 
+                    />
+                 </div>
+
+                 {/* BLOCK 2: DATE & TIME */}
+                 <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
+                    {/* DATE ROW */}
+                    <div className="bg-white p-3.5 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center text-white"><CalendarIcon size={18} fill="white" /></div>
+                            <span className="text-[17px] text-black">Дата</span>
                         </div>
-                      )}
-                   </div>
-                 ))}
+                        <IOSSwitch checked={hasDate} onChange={setHasDate} />
+                    </div>
+                    {/* DATE PICKER (Show if on) */}
+                    {hasDate && (
+                        <div className="bg-white px-4 pb-3 animate-in fade-in slide-in-from-top-2">
+                            <input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" />
+                        </div>
+                    )}
+
+                    {/* TIME ROW */}
+                    <div className="bg-white p-3.5 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded bg-blue-500 flex items-center justify-center text-white"><Clock size={18} fill="white" /></div>
+                            <span className="text-[17px] text-black">Время</span>
+                        </div>
+                        <IOSSwitch checked={hasTime} onChange={(val) => { setHasTime(val); if(val && !hasDate) setHasDate(true); }} />
+                    </div>
+                     {/* TIME PICKER (Show if on) */}
+                    {hasTime && (
+                        <div className="bg-white px-4 pb-3 animate-in fade-in slide-in-from-top-2">
+                            <input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" />
+                        </div>
+                    )}
+                 </div>
+
+                 {/* BLOCK 3: DETAILS */}
+                 <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
+                    {/* LIST */}
+                    <div className="bg-white p-3.5 flex justify-between items-center">
+                       <span className="text-[17px] text-black">Список</span>
+                       <div className="flex items-center gap-2 text-gray-400">
+                          <div className="w-3 h-3 rounded-full bg-blue-500"/> <span className="text-[17px] text-gray-500">Напоминания</span>
+                          <ChevronRight size={16} />
+                       </div>
+                    </div>
+                    
+                    {/* PRIORITY (Mapped to Flag) */}
+                    <div className="bg-white p-3.5 flex justify-between items-center">
+                       <span className="text-[17px] text-black">Приоритет</span>
+                       <div className="flex items-center gap-1">
+                          <select 
+                            className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" 
+                            value={newT.priority} 
+                            onChange={e => setNewT({...newT, priority: parseInt(e.target.value)})}
+                          >
+                             <option value="1">Низкий</option>
+                             <option value="3">Нет</option>
+                             <option value="5">Высокий</option>
+                          </select>
+                          <span className="absolute right-9 text-gray-500">{newT.priority === 5 ? '!!!' : newT.priority === 1 ? '!' : 'Нет'}</span>
+                          <ChevronRight size={16} className="text-gray-400 absolute right-3" />
+                       </div>
+                    </div>
+
+                    {/* TYPE (Action) */}
+                    <div className="bg-white p-3.5 flex justify-between items-center">
+                        <span className="text-[17px] text-black">Действие</span>
+                        <div className="flex items-center gap-1 relative">
+                             <select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.type} onChange={e => setNewT({...newT, type: e.target.value})}>
+                                <option value="reminder">Нет</option>
+                                <option value="email">Email</option>
+                                <option value="whatsapp">WhatsApp</option>
+                                <option value="web_search">Поиск</option>
+                             </select>
+                             <ChevronRight size={16} className="text-gray-400 absolute right-0" />
+                        </div>
+                    </div>
+                 </div>
+
               </div>
-              <div className="h-6"></div>
+
+              {/* 3. Bottom Toolbar (Quick Actions) */}
+              <div className="bg-[#D1D3D9] p-2 flex justify-between items-center pb-6 px-6 border-t border-gray-300">
+                  {/* Fake Buttons for UI look */}
+                  <button className="text-gray-600 active:text-gray-900"><CalendarIcon size={24} /></button>
+                  <button className="text-gray-600 active:text-gray-900"><MapPin size={24} /></button>
+                  <button onClick={() => setNewT({...newT, priority: newT.priority === 5 ? 3 : 5})} className={`${newT.priority === 5 ? 'text-orange-500 fill-orange-500' : 'text-gray-600'}`}><Flag size={24} /></button>
+                  <button className="text-gray-600 active:text-gray-900"><Camera size={24} /></button>
+              </div>
+
            </div>
         </div>
       )}
