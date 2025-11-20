@@ -1,40 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import WebApp from '@twa-dev/sdk';
-import { Plus, Search, ExternalLink, RefreshCw, ChevronRight, CloudOff, RotateCcw, Trash2 } from 'lucide-react';
-// Drag & Drop
+import { Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, Calendar } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// --- КОМПОНЕНТ КАРТОЧКИ (Обновленный дизайн) ---
+// --- КАРТОЧКА ЗАДАЧИ ---
 const SortableTaskItem = ({ task, completeTask, deleteTask, restoreTask, performAction, formatTime, isOverdue, isTrashMode }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
-  
-  // Локальное состояние для анимации "мигания" перед исчезновением
   const [isFlashing, setIsFlashing] = useState(false);
 
   const handleComplete = (e) => {
-    e.stopPropagation(); // Чтобы не сработал драг
-    setIsFlashing(true); // 1. Включаем мигание
-    
-    // 2. Ждем анимацию и выполняем
+    e.stopPropagation();
+    setIsFlashing(true);
     setTimeout(() => {
         completeTask(task);
-        // Сбрасываем флеш, если вдруг задача осталась в списке (например, повторяющаяся)
         setTimeout(() => setIsFlashing(false), 100); 
     }, 600); 
   };
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition: isDragging ? 'none' : 'all 0.3s ease', // Плавная анимация удаления/перемещения
+    transition: isDragging ? 'none' : 'all 0.3s ease',
     zIndex: isDragging ? 50 : 'auto',
     opacity: isDragging ? 0.9 : 1,
     scale: isDragging ? '1.02' : '1',
   };
 
-  // Если это корзина - драг не нужен
   const dndProps = isTrashMode ? {} : { ...attributes, ...listeners };
 
   return (
@@ -43,60 +36,43 @@ const SortableTaskItem = ({ task, completeTask, deleteTask, restoreTask, perform
         style={style} 
         {...dndProps}
         className={`
-            group w-full max-w-full bg-white rounded-xl p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] 
+            group w-full bg-white rounded-xl p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] 
             flex items-start gap-3 touch-manipulation transition-all duration-500
             ${isFlashing ? 'bg-gray-50' : 'bg-white'} 
             ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}
         `}
     >
-       {/* КРУЖОЧЕК (ЧЕКБОКС) ИЛИ ВОССТАНОВЛЕНИЕ */}
        {!isTrashMode ? (
            <button 
-             onPointerDown={(e) => e.stopPropagation()} // Важно: чтобы не начинался драг при клике на кнопку
+             onPointerDown={(e) => e.stopPropagation()}
              onClick={handleComplete}
              className={`
                 mt-0.5 shrink-0 w-[24px] h-[24px] rounded-full border-2 transition-all duration-300 flex items-center justify-center
-                ${isFlashing 
-                    ? 'bg-blue-500 border-blue-500 scale-110'  // В момент клика (вспышка)
-                    : task.completed 
-                        ? 'bg-blue-500 border-blue-500'         // Если уже выполнена (во вкладке Выполненные)
-                        : 'border-gray-300 hover:border-blue-500 bg-transparent'
-                }
+                ${isFlashing ? 'bg-blue-500 border-blue-500 scale-110' : task.completed ? 'bg-blue-500 border-blue-500' : 'border-gray-300 hover:border-blue-500 bg-transparent'}
              `}
            >
-             {(isFlashing || task.completed) && (
-                 <div className="w-2.5 h-2.5 bg-white rounded-full animate-in zoom-in duration-200" />
-             )}
+             {(isFlashing || task.completed) && <div className="w-2.5 h-2.5 bg-white rounded-full animate-in zoom-in duration-200" />}
            </button>
        ) : (
-           <button onClick={() => restoreTask(task.id)} className="mt-0.5 shrink-0 text-blue-600 p-1">
-              <RotateCcw size={20} />
-           </button>
+           <button onClick={() => restoreTask(task.id)} className="mt-0.5 shrink-0 text-blue-600 p-1"><RotateCcw size={20} /></button>
        )}
        
-       {/* ТЕКСТ ЗАДАЧИ */}
        <div className="flex-1 min-w-0 pt-0.5">
-          <div className="flex justify-between items-start">
-            <span className={`
-                text-[17px] leading-tight break-words transition-colors duration-500
-                ${(task.completed || isFlashing) ? 'text-gray-400 line-through' : 'text-black font-normal'}
-            `}>
+          <span className={`text-[17px] leading-tight break-words transition-colors duration-500 ${(task.completed || isFlashing) ? 'text-gray-400 line-through' : 'text-black font-normal'}`}>
               {task.title}
-            </span>
-          </div>
+          </span>
 
           {task.description && (
-             // Жирный, но бледный шрифт для описания (как в Apple Reminders)
-            <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">
-                {task.description}
-            </p>
+            <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>
           )}
 
-          {/* МЕТА-ДАННЫЕ */}
-          <div className="flex items-center flex-wrap gap-2 mt-2">
-             <span className={`text-xs font-semibold ${isOverdue(task.next_run) && !task.completed ? 'text-red-500' : 'text-gray-400'}`}>
-                {formatTime(task.next_run)}
-             </span>
+          {/* Мета-данные (показываем, только если есть время или тип действия) */}
+          <div className="flex items-center flex-wrap gap-2 mt-1.5">
+             {task.next_run && (
+                 <span className={`text-xs font-semibold ${isOverdue(task.next_run) && !task.completed ? 'text-red-500' : 'text-gray-400'}`}>
+                    {formatTime(task.next_run)}
+                 </span>
+             )}
              
              {task.frequency !== 'once' && (
                <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium">
@@ -112,17 +88,7 @@ const SortableTaskItem = ({ task, completeTask, deleteTask, restoreTask, perform
           </div>
        </div>
 
-       {/* УДАЛЕНИЕ */}
-       {isTrashMode ? (
-          // В корзине - удаление навсегда
-          <button onClick={() => deleteTask(task.id)} className="shrink-0 text-red-500 p-1"><Trash2 size={18} /></button>
-       ) : (
-          // В обычном списке - в корзину (скрытая кнопка, покажем если свайп, но пока просто кнопка справа для удобства)
-          // Для Apple стиля лучше вообще убрать мусорку из карточки, но оставим для функционала
-          <button onPointerDown={(e) => e.stopPropagation()} onClick={() => deleteTask(task.id)} className="shrink-0 text-gray-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-             <Trash2 size={18} />
-          </button>
-       )}
+       {isTrashMode && <button onClick={() => deleteTask(task.id)} className="shrink-0 text-red-500 p-1"><Trash2 size={18} /></button>}
     </div>
   );
 };
@@ -135,22 +101,15 @@ const App = () => {
   
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showAddModal, setShowAddModal] = useState(false);
-  
-  // Фильтры: all, today, upcoming, completed, trash
   const [filter, setFilter] = useState('all'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [userId, setUserId] = useState(null);
 
   const [newTask, setNewTask] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
 
-  // Настройка сенсоров для плавного скролла и драга
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(TouchSensor, { 
-        // ВАЖНО: Драг начнется только если держать палец 200мс. 
-        // Это позволяет скроллить страницу, не перетаскивая задачи случайно.
-        activationConstraint: { delay: 200, tolerance: 8 } 
-    }), 
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }), 
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -161,7 +120,8 @@ const App = () => {
     if (WebApp.initDataUnsafe.user) {
       setUserId(WebApp.initDataUnsafe.user.id);
       WebApp.expand();
-      WebApp.enableClosingConfirmation();
+      // ВАЖНО: Включаем это, но основной фикс - в CSS
+      WebApp.enableClosingConfirmation(); 
       WebApp.setHeaderColor('#F2F2F7'); 
       WebApp.setBackgroundColor('#F2F2F7');
     } else {
@@ -181,13 +141,11 @@ const App = () => {
 
   const syncTasks = async () => {
     try {
-      // Загружаем ВСЕ задачи: и активные, и удаленные, и выполненные
       let query = supabase
         .from('tasks')
         .select('*')
         .eq('telegram_user_id', userId)
-        .order('position', { ascending: true })
-        .order('next_run', { ascending: true });
+        .order('position', { ascending: true });
 
       const { data, error } = await query;
       if (error) throw error;
@@ -224,7 +182,9 @@ const App = () => {
 
   const createTask = async () => {
     if (!newTask.title) return alert('Название?');
-    const runTime = newTask.next_run || new Date().toISOString().slice(0, 16);
+    
+    // ТЕПЕРЬ МОЖНО NULL (БЕЗ ВРЕМЕНИ)
+    const runTime = newTask.next_run ? newTask.next_run : null;
 
     let template = null;
     if (newTask.type === 'email') template = { to: "", subject: newTask.title, body: newTask.description };
@@ -237,7 +197,7 @@ const App = () => {
       telegram_user_id: userId,
       status: 'active',
       completed: false,
-      is_deleted: false, // Новое поле
+      is_deleted: false,
       position: tasks.length,
       id: 'temp-' + Date.now() 
     };
@@ -256,7 +216,7 @@ const App = () => {
   };
 
   const completeTask = async (task) => {
-    const isRecurring = task.frequency !== 'once';
+    const isRecurring = task.frequency !== 'once' && task.next_run; // Повтор только если есть дата
     
     setTasks(current => current.map(t => {
         if (t.id === task.id) {
@@ -266,6 +226,10 @@ const App = () => {
         }
         return t;
     }));
+
+    if (!isRecurring) {
+        setTimeout(() => setTasks(curr => curr.filter(t => t.id !== task.id)), 300);
+    }
 
     if (isOnline && !task.id.toString().startsWith('temp-')) {
         if (isRecurring) {
@@ -278,31 +242,23 @@ const App = () => {
   };
 
   const deleteTask = async (taskId) => {
-    // Если мы уже в корзине - удаляем навсегда
     if (filter === 'trash') {
         if (!confirm('Удалить навсегда?')) return;
         setTasks(curr => curr.filter(t => t.id !== taskId));
-        if (isOnline && !taskId.toString().startsWith('temp-')) {
-            await supabase.from('tasks').delete().eq('id', taskId);
-        }
+        if (isOnline && !taskId.toString().startsWith('temp-')) await supabase.from('tasks').delete().eq('id', taskId);
     } else {
-        // Иначе - мягкое удаление (перенос в корзину)
         setTasks(curr => curr.map(t => t.id === taskId ? { ...t, is_deleted: true } : t));
-        if (isOnline && !taskId.toString().startsWith('temp-')) {
-            await supabase.from('tasks').update({ is_deleted: true }).eq('id', taskId);
-        }
+        if (isOnline && !taskId.toString().startsWith('temp-')) await supabase.from('tasks').update({ is_deleted: true }).eq('id', taskId);
     }
   };
 
   const restoreTask = async (taskId) => {
       setTasks(curr => curr.map(t => t.id === taskId ? { ...t, is_deleted: false } : t));
-      if (isOnline && !taskId.toString().startsWith('temp-')) {
-          await supabase.from('tasks').update({ is_deleted: false }).eq('id', taskId);
-      }
+      if (isOnline && !taskId.toString().startsWith('temp-')) await supabase.from('tasks').update({ is_deleted: false }).eq('id', taskId);
   };
 
-  // === HELPERS ===
   const calculateNextRun = (current, freq) => {
+    if (!current) return null;
     const date = new Date(current);
     if (freq === 'daily') date.setDate(date.getDate() + 1);
     if (freq === 'weekly') date.setDate(date.getDate() + 7);
@@ -327,35 +283,31 @@ const App = () => {
     const tomorrowStart = new Date(todayStart);
     tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
-    // Сначала отсеиваем по статусу удаления
-    if (filter === 'trash') {
-        return filtered.filter(t => t.is_deleted);
-    } else {
-        // Для всех остальных вкладок - показываем НЕ удаленные
-        filtered = filtered.filter(t => !t.is_deleted);
-    }
+    if (filter === 'trash') return filtered.filter(t => t.is_deleted);
+    filtered = filtered.filter(t => !t.is_deleted);
 
-    // Теперь фильтруем по вкладкам
     switch (filter) {
-      case 'today': return filtered.filter(t => !t.completed && new Date(t.next_run) >= todayStart && new Date(t.next_run) < tomorrowStart);
-      case 'upcoming': return filtered.filter(t => !t.completed && new Date(t.next_run) >= tomorrowStart);
-      case 'completed': return filtered.filter(t => t.completed); // Новая вкладка
-      default: return filtered.filter(t => !t.completed); // 'all' показывает только активные
+      case 'today': return filtered.filter(t => !t.completed && t.next_run && new Date(t.next_run) >= todayStart && new Date(t.next_run) < tomorrowStart);
+      case 'upcoming': return filtered.filter(t => !t.completed && t.next_run && new Date(t.next_run) >= tomorrowStart);
+      case 'completed': return filtered.filter(t => t.completed);
+      // ALL теперь показывает все активные (и с датой, и без)
+      default: return filtered.filter(t => !t.completed);
     }
   };
 
   const formatTime = (dateStr) => {
+    if (!dateStr) return '';
     const date = new Date(dateStr);
     const isToday = date.toDateString() === new Date().toDateString();
     return isToday ? date.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'}) : date.toLocaleDateString('ru-RU', {day:'numeric', month:'short'}) + ' ' + date.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
   };
 
-  const isOverdue = (dateStr) => new Date(dateStr) < new Date();
+  const isOverdue = (dateStr) => dateStr && new Date(dateStr) < new Date();
   const filteredList = getFilteredTasks();
   const overdueCount = tasks.filter(t => !t.completed && !t.is_deleted && isOverdue(t.next_run)).length;
 
   return (
-    <div className="min-h-[100dvh] w-full overflow-x-hidden bg-[#F2F2F7] text-black font-sans flex flex-col">
+    <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col">
       {/* ШАПКА */}
       <div className="w-full px-4 pt-14 pb-2 bg-[#F2F2F7] sticky top-0 z-20">
         <div className="flex justify-between items-center mb-3">
@@ -367,15 +319,12 @@ const App = () => {
                {overdueCount > 0 && <span className="text-red-500 font-semibold text-sm bg-white px-2 py-1 rounded-lg shadow-sm">{overdueCount}</span>}
            </div>
         </div>
-        
         <div className="relative mb-4 w-full">
           <Search className="absolute left-3 top-2 text-gray-400" size={18} />
           <input className="w-full pl-9 pr-4 py-2 bg-[#E3E3E8] rounded-xl text-base text-black placeholder-gray-500 focus:outline-none focus:bg-white transition-colors" placeholder="Поиск" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
         </div>
-
         <div className="w-full overflow-x-auto hide-scrollbar">
            <div className="flex gap-2 pb-2">
-             {/* Меню вкладок */}
              {[
                {id: 'all', label: 'Все'}, 
                {id: 'today', label: 'Сегодня'}, 
@@ -407,8 +356,8 @@ const App = () => {
                             restoreTask={restoreTask}
                             performAction={performAction}
                             formatTime={formatTime}
-                            isOverdue={(d) => new Date(d) < new Date()}
-                            isTrashMode={filter === 'trash'} // Передаем режим корзины
+                            isOverdue={(d) => d && new Date(d) < new Date()}
+                            isTrashMode={filter === 'trash'}
                         />
                     ))
                 )}
@@ -455,16 +404,16 @@ const App = () => {
                     </div>
                  </div>
                  <div className="bg-white p-3.5 flex justify-between items-center relative">
-                    <span className="text-black text-[17px]">Повтор</span>
-                    <div className="flex items-center gap-1">
-                        <select className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4 z-10 relative" value={newTask.frequency} onChange={e => setNewTask({...newTask, frequency: e.target.value})}>
-                           <option value="once">Никогда</option>
-                           <option value="daily">Ежедневно</option>
-                           <option value="weekly">Еженедельно</option>
-                           <option value="monthly">Ежемесячно</option>
-                        </select>
-                        <ChevronRight size={16} className="text-gray-300 absolute right-0" />
-                    </div>
+                     <span className="text-black text-[17px]">Повтор</span>
+                     <div className="flex items-center gap-1">
+                         <select className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4 z-10 relative" value={newTask.frequency} onChange={e => setNewTask({...newTask, frequency: e.target.value})}>
+                             <option value="once">Никогда</option>
+                             <option value="daily">Ежедневно</option>
+                             <option value="weekly">Еженедельно</option>
+                             <option value="monthly">Ежемесячно</option>
+                         </select>
+                         <ChevronRight size={16} className="text-gray-300 absolute right-0" />
+                     </div>
                  </div>
               </div>
               <div className="h-6"></div> 
