@@ -1,72 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import WebApp from '@twa-dev/sdk';
-// Проверяем все иконки, которые используются
-import { Plus, Search, ExternalLink, RefreshCw, ChevronRight, CloudOff, RotateCcw, Trash2 } from 'lucide-react';
+import { Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, ChevronRight, CloudOff } from 'lucide-react';
 
-// Библиотеки Drag & Drop
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from '@dnd-kit/core';
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-
-// --- КОМПОНЕНТ КАРТОЧКИ ---
-const SortableTaskItem = ({ task, completeTask, deleteTask, restoreTask, performAction, formatTime, isOverdue, isTrashMode }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+// --- КОМПОНЕНТ ЗАДАЧИ (Облегченный, без Drag&Drop) ---
+const TaskItem = ({ task, completeTask, deleteTask, restoreTask, performAction, formatTime, isOverdue, isTrashMode }) => {
   const [isFlashing, setIsFlashing] = useState(false);
 
   const handleComplete = (e) => {
     e.stopPropagation();
-    setIsFlashing(true);
+    setIsFlashing(true); // Анимация нажатия
     setTimeout(() => {
         completeTask(task);
-        setTimeout(() => setIsFlashing(false), 100); 
-    }, 600); 
+        setTimeout(() => setIsFlashing(false), 100); // Сброс
+    }, 600); // Задержка перед исчезновением
   };
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: isDragging ? 'none' : 'all 0.3s ease',
-    zIndex: isDragging ? 50 : 'auto',
-    opacity: isDragging ? 0.9 : 1,
-    scale: isDragging ? '1.02' : '1',
-  };
-
-  const dndProps = isTrashMode ? {} : { ...attributes, ...listeners };
 
   return (
     <div 
-        ref={setNodeRef} 
-        style={style} 
-        {...dndProps}
         className={`
             group w-full bg-white rounded-xl p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] 
-            flex items-start gap-3 touch-manipulation transition-all duration-500
+            flex items-start gap-3 transition-all duration-500
             ${isFlashing ? 'bg-gray-50' : 'bg-white'} 
-            ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}
         `}
     >
+       {/* КРУЖОЧЕК (ЧЕКБОКС) */}
        {!isTrashMode ? (
            <button 
-             onPointerDown={(e) => e.stopPropagation()}
              onClick={handleComplete}
              className={`
                 mt-0.5 shrink-0 w-[24px] h-[24px] rounded-full border-2 transition-all duration-300 flex items-center justify-center
-                ${isFlashing ? 'bg-blue-500 border-blue-500 scale-110' : task.completed ? 'bg-blue-500 border-blue-500' : 'border-gray-300 hover:border-blue-500 bg-transparent'}
+                ${isFlashing 
+                    ? 'bg-blue-500 border-blue-500 scale-110' 
+                    : task.completed 
+                        ? 'bg-blue-500 border-blue-500' 
+                        : 'border-gray-300 hover:border-blue-500 bg-transparent'
+                }
              `}
            >
-             {(isFlashing || task.completed) && <div className="w-2.5 h-2.5 bg-white rounded-full animate-in zoom-in duration-200" />}
+             {(isFlashing || task.completed) && (
+                 <div className="w-2.5 h-2.5 bg-white rounded-full animate-in zoom-in duration-200" />
+             )}
            </button>
        ) : (
-           <button onClick={() => restoreTask(task.id)} className="mt-0.5 shrink-0 text-blue-600 p-1"><RotateCcw size={20} /></button>
+           // Кнопка восстановления в корзине
+           <button onClick={() => restoreTask(task.id)} className="mt-0.5 shrink-0 text-blue-600 p-1">
+              <RotateCcw size={20} />
+           </button>
        )}
        
+       {/* ТЕКСТ И МЕТАДАННЫЕ */}
        <div className="flex-1 min-w-0 pt-0.5">
           <span className={`text-[17px] leading-tight break-words transition-colors duration-500 ${(task.completed || isFlashing) ? 'text-gray-400 line-through' : 'text-black font-normal'}`}>
               {task.title}
           </span>
 
           {task.description && (
-            <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>
+            <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">
+                {task.description}
+            </p>
           )}
 
           <div className="flex items-center flex-wrap gap-2 mt-1.5">
@@ -83,19 +75,27 @@ const SortableTaskItem = ({ task, completeTask, deleteTask, restoreTask, perform
              )}
 
              {task.type !== 'reminder' && (
-                <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); performAction(task); }} className="ml-auto text-blue-600 text-xs font-bold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded">
+                <button onClick={(e) => { e.stopPropagation(); performAction(task); }} className="ml-auto text-blue-600 text-xs font-bold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded">
                    <ExternalLink size={10}/> {task.type}
                 </button>
              )}
           </div>
        </div>
 
-       {isTrashMode && <button onClick={() => deleteTask(task.id)} className="shrink-0 text-red-500 p-1"><Trash2 size={18} /></button>}
+       {/* УДАЛЕНИЕ */}
+       {isTrashMode ? (
+          <button onClick={() => deleteTask(task.id)} className="shrink-0 text-red-500 p-1"><Trash2 size={18} /></button>
+       ) : (
+          // В обычном списке кнопка удаления скрыта (можно добавить свайп в будущем, но пока просто чистый вид)
+          <button onClick={() => deleteTask(task.id)} className="shrink-0 text-gray-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+             <Trash2 size={18} />
+          </button>
+       )}
     </div>
   );
 };
 
-// --- ОСНОВНОЙ КОМПОНЕНТ ---
+// --- ГЛАВНОЕ ПРИЛОЖЕНИЕ ---
 const App = () => {
   const [tasks, setTasks] = useState(() => {
     const saved = localStorage.getItem('tasks');
@@ -110,12 +110,7 @@ const App = () => {
 
   const [newTask, setNewTask] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }), 
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
+  // Инициализация
   useEffect(() => {
     window.addEventListener('online', () => setIsOnline(true));
     window.addEventListener('offline', () => setIsOnline(false));
@@ -123,16 +118,18 @@ const App = () => {
     if (WebApp.initDataUnsafe.user) {
       setUserId(WebApp.initDataUnsafe.user.id);
       WebApp.expand();
-      WebApp.enableClosingConfirmation(); 
+      WebApp.enableClosingConfirmation();
       WebApp.setHeaderColor('#F2F2F7'); 
       WebApp.setBackgroundColor('#F2F2F7');
     } else {
-      setUserId(777);
+      setUserId(777); // Тестовый ID
     }
   }, []);
 
+  // Авто-сохранение в LocalStorage
   useEffect(() => { localStorage.setItem('tasks', JSON.stringify(tasks)); }, [tasks]);
 
+  // Синхронизация
   useEffect(() => {
     if (userId && isOnline) {
       syncTasks();
@@ -147,7 +144,7 @@ const App = () => {
         .from('tasks')
         .select('*')
         .eq('telegram_user_id', userId)
-        .order('position', { ascending: true });
+        .order('next_run', { ascending: true }); // Сортируем по времени
 
       const { data, error } = await query;
       if (error) throw error;
@@ -162,26 +159,7 @@ const App = () => {
     }
   };
 
-  const handleDragEnd = async (event) => {
-    const { active, over } = event;
-    if (active.id !== over.id) {
-      setTasks((items) => {
-        const oldIndex = items.findIndex(t => t.id === active.id);
-        const newIndex = items.findIndex(t => t.id === over.id);
-        const newOrder = arrayMove(items, oldIndex, newIndex);
-        if (isOnline) updatePositions(newOrder);
-        return newOrder;
-      });
-    }
-  };
-
-  const updatePositions = async (orderedTasks) => {
-    const updates = orderedTasks.map((t, index) => ({
-        id: t.id, position: index, title: t.title, telegram_user_id: userId 
-    })).filter(t => !t.id.toString().startsWith('temp-'));
-    if (updates.length > 0) await supabase.from('tasks').upsert(updates);
-  };
-
+  // Создание задачи
   const createTask = async () => {
     if (!newTask.title) return alert('Название?');
     
@@ -199,7 +177,6 @@ const App = () => {
       status: 'active',
       completed: false,
       is_deleted: false,
-      position: tasks.length,
       id: 'temp-' + Date.now() 
     };
 
@@ -216,6 +193,7 @@ const App = () => {
     }
   };
 
+  // Выполнение задачи
   const completeTask = async (task) => {
     const isRecurring = task.frequency !== 'once' && task.next_run;
     
@@ -242,6 +220,7 @@ const App = () => {
     }
   };
 
+  // Удаление (Мягкое или полное)
   const deleteTask = async (taskId) => {
     if (filter === 'trash') {
         if (!confirm('Удалить навсегда?')) return;
@@ -275,6 +254,7 @@ const App = () => {
     if (task.type === 'web_search') window.open(`https://www.google.com/search?q=${encodeURIComponent(task.title)}`);
   };
 
+  // Логика фильтрации
   const getFilteredTasks = () => {
     let filtered = tasks;
     if (searchQuery) filtered = filtered.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -286,6 +266,14 @@ const App = () => {
 
     if (filter === 'trash') return filtered.filter(t => t.is_deleted);
     filtered = filtered.filter(t => !t.is_deleted);
+
+    // Сортировка: сначала с датой, потом без. Внутри даты - по возрастанию.
+    filtered.sort((a, b) => {
+        if (!a.next_run && !b.next_run) return 0;
+        if (!a.next_run) return 1;
+        if (!b.next_run) return -1;
+        return new Date(a.next_run) - new Date(b.next_run);
+    });
 
     switch (filter) {
       case 'today': return filtered.filter(t => !t.completed && t.next_run && new Date(t.next_run) >= todayStart && new Date(t.next_run) < tomorrowStart);
@@ -325,45 +313,39 @@ const App = () => {
         </div>
         <div className="w-full overflow-x-auto hide-scrollbar">
            <div className="flex gap-2 pb-2">
-             {[
-               {id: 'all', label: 'Все'}, 
-               {id: 'today', label: 'Сегодня'}, 
-               {id: 'upcoming', label: 'Будущие'},
-               {id: 'completed', label: 'Готовые'},
-               {id: 'trash', label: 'Корзина'}
-             ].map(f => (
-               <button key={f.id} onClick={() => setFilter(f.id)} className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${filter === f.id ? 'bg-black text-white' : 'bg-white text-gray-600 shadow-sm'}`}>
-                 {f.label}
+             {['all', 'today', 'upcoming', 'completed', 'trash'].map(id => (
+               <button 
+                key={id} 
+                onClick={() => setFilter(id)} 
+                className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${filter === id ? 'bg-black text-white' : 'bg-white text-gray-600 shadow-sm'}`}
+               >
+                 {id === 'all' ? 'Все' : id === 'today' ? 'Сегодня' : id === 'upcoming' ? 'Будущие' : id === 'completed' ? 'Готовые' : 'Корзина'}
                </button>
              ))}
            </div>
         </div>
       </div>
 
-      {/* СПИСОК */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <div className="flex-1 w-full px-4 pb-32 space-y-3">
-            <SortableContext items={filteredList} strategy={verticalListSortingStrategy}>
-                {filteredList.length === 0 ? (
-                    <div className="text-center py-20 text-gray-400"><p>Пусто</p></div>
-                ) : (
-                    filteredList.map(task => (
-                        <SortableTaskItem 
-                            key={task.id} 
-                            task={task} 
-                            completeTask={completeTask} 
-                            deleteTask={deleteTask} 
-                            restoreTask={restoreTask}
-                            performAction={performAction}
-                            formatTime={formatTime}
-                            isOverdue={(d) => d && new Date(d) < new Date()}
-                            isTrashMode={filter === 'trash'}
-                        />
-                    ))
-                )}
-            </SortableContext>
-        </div>
-      </DndContext>
+      {/* СПИСОК ЗАДАЧ */}
+      <div className="flex-1 w-full px-4 pb-32 space-y-3">
+        {filteredList.length === 0 ? (
+            <div className="text-center py-20 text-gray-400"><p>Пусто</p></div>
+        ) : (
+            filteredList.map(task => (
+                <TaskItem 
+                    key={task.id} 
+                    task={task} 
+                    completeTask={completeTask} 
+                    deleteTask={deleteTask} 
+                    restoreTask={restoreTask}
+                    performAction={performAction}
+                    formatTime={formatTime}
+                    isOverdue={(d) => d && new Date(d) < new Date()}
+                    isTrashMode={filter === 'trash'}
+                />
+            ))
+        )}
+      </div>
 
       {/* НИЖНЯЯ ПАНЕЛЬ */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7]/90 backdrop-blur-md border-t border-gray-200 flex justify-between items-center z-30">
@@ -373,57 +355,28 @@ const App = () => {
          </button>
       </div>
 
-      {/* ИСПРАВЛЕННАЯ МОДАЛКА (Без кастомных анимаций, классический стиль) */}
+      {/* МОДАЛКА */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
            <div className="bg-gray-100 w-full sm:max-w-md rounded-t-2xl p-4 max-h-[90vh] overflow-y-auto shadow-2xl">
-              
-              {/* Хедер модалки */}
               <div className="flex justify-between items-center mb-4 px-2">
                  <button onClick={() => setShowAddModal(false)} className="text-blue-600 text-[17px]">Отмена</button>
                  <h3 className="font-bold text-black text-[17px]">Новое</h3>
                  <button onClick={createTask} className="text-blue-600 font-bold text-[17px]">Добавить</button>
               </div>
-
-              {/* Блок ввода */}
               <div className="bg-white rounded-xl overflow-hidden mb-6 shadow-sm">
-                 <input 
-                   className="w-full p-4 bg-white text-[17px] border-b border-gray-100 focus:outline-none text-black placeholder-gray-400"
-                   placeholder="Название"
-                   value={newTask.title || ''}
-                   onChange={e => setNewTask({...newTask, title: e.target.value})}
-                   autoFocus
-                 />
-                 <textarea 
-                   className="w-full p-4 bg-white text-[17px] focus:outline-none resize-none h-24 text-black placeholder-gray-400"
-                   placeholder="Заметки"
-                   value={newTask.description || ''}
-                   onChange={e => setNewTask({...newTask, description: e.target.value})}
-                 />
+                 <input className="w-full p-4 bg-white text-[17px] border-b border-gray-100 focus:outline-none text-black placeholder-gray-400" placeholder="Название" value={newTask.title || ''} onChange={e => setNewTask({...newTask, title: e.target.value})} autoFocus />
+                 <textarea className="w-full p-4 bg-white text-[17px] focus:outline-none resize-none h-24 text-black placeholder-gray-400" placeholder="Заметки" value={newTask.description || ''} onChange={e => setNewTask({...newTask, description: e.target.value})} />
               </div>
-
-              {/* Настройки */}
               <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-200">
-                 {/* Дата */}
                  <div className="bg-white p-3.5 flex justify-between items-center">
                     <span className="text-black text-[17px]">Дата и время</span>
-                    <input 
-                       type="datetime-local" 
-                       className="bg-gray-100 text-black rounded-md p-1 text-[15px] outline-none"
-                       value={newTask.next_run || ''}
-                       onChange={e => setNewTask({...newTask, next_run: e.target.value})}
-                    />
+                    <input type="datetime-local" className="bg-gray-100 text-black rounded-md p-1 text-[15px] outline-none" value={newTask.next_run || ''} onChange={e => setNewTask({...newTask, next_run: e.target.value})} />
                  </div>
-                 
-                 {/* Тип */}
                  <div className="bg-white p-3.5 flex justify-between items-center relative">
                     <span className="text-black text-[17px]">Тип</span>
                     <div className="flex items-center gap-1">
-                        <select 
-                           className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4 z-10 relative"
-                           value={newTask.type || 'reminder'}
-                           onChange={e => setNewTask({...newTask, type: e.target.value})}
-                        >
+                        <select className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4 z-10 relative" value={newTask.type || 'reminder'} onChange={e => setNewTask({...newTask, type: e.target.value})}>
                            <option value="reminder">Нет</option>
                            <option value="email">Email</option>
                            <option value="whatsapp">WhatsApp</option>
@@ -432,16 +385,10 @@ const App = () => {
                         <ChevronRight size={16} className="text-gray-300 absolute right-0" />
                     </div>
                  </div>
-
-                 {/* Повтор */}
                  <div className="bg-white p-3.5 flex justify-between items-center relative">
                      <span className="text-black text-[17px]">Повтор</span>
                      <div className="flex items-center gap-1">
-                         <select 
-                             className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4 z-10 relative"
-                             value={newTask.frequency || 'once'}
-                             onChange={e => setNewTask({...newTask, frequency: e.target.value})}
-                         >
+                         <select className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4 z-10 relative" value={newTask.frequency || 'once'} onChange={e => setNewTask({...newTask, frequency: e.target.value})}>
                              <option value="once">Никогда</option>
                              <option value="daily">Ежедневно</option>
                              <option value="weekly">Еженедельно</option>
