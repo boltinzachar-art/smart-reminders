@@ -4,7 +4,7 @@ import WebApp from '@twa-dev/sdk';
 import { 
   Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
-  Flag, Camera, CheckCircle2, List, LayoutGrid, CalendarClock, Inbox, AlertCircle
+  Flag, Camera, CheckCircle2, List, Inbox, CalendarClock, MoreHorizontal, CheckSquare, X, Check
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -34,6 +34,17 @@ const formatTime = (dateStr) => {
   return isToday ? d.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'}) : d.toLocaleDateString('ru-RU', {day:'numeric', month:'short'}) + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
 };
 
+const performAction = (e, task) => {
+  e.stopPropagation();
+  const text = encodeURIComponent(task.title + (task.description ? `\n${task.description}` : ''));
+  const actions = {
+    email: `mailto:?subject=${encodeURIComponent(task.title)}&body=${text}`,
+    whatsapp: `https://wa.me/?text=${text}`,
+    web_search: `https://www.google.com/search?q=${encodeURIComponent(task.title)}`
+  };
+  if (actions[task.type]) window.open(actions[task.type]);
+};
+
 // --- COMPONENTS ---
 const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
   <button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform">
@@ -47,7 +58,7 @@ const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
   </button>
 );
 
-const UserListItem = ({ list, count, onClick, onDelete }) => (
+const UserListItem = ({ list, count, onClick }) => (
   <div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
     <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
       <List size={16} className="text-blue-600" />
@@ -58,13 +69,24 @@ const UserListItem = ({ list, count, onClick, onDelete }) => (
   </div>
 );
 
-const TaskItem = ({ task, actions, viewMode }) => {
+const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
   const timerRef = useRef(null);
 
+  const handleMainClick = (e) => {
+    e.stopPropagation();
+    if (selectionMode) {
+        onSelect(task.id);
+    } else {
+        // В обычном режиме клик по телу ничего не делает (или открывает детали, если решим)
+    }
+  };
+
   const handleCircleClick = (e) => {
     e.stopPropagation();
+    if (selectionMode) { onSelect(task.id); return; } // В режиме выбора клик везде выбирает
+    
     if (viewMode === 'completed') { actions.uncomplete(task); return; }
     if (viewMode === 'trash') return;
     if (isCompleting) { clearTimeout(timerRef.current); setIsCompleting(false); } 
@@ -76,23 +98,37 @@ const TaskItem = ({ task, actions, viewMode }) => {
   const isTrash = viewMode === 'trash';
   
   let circleClass = "mt-0.5 shrink-0 w-[24px] h-[24px] rounded-full border-2 flex items-center justify-center transition-all duration-300 ";
-  if (isCompleting) circleClass += "animate-blink-3 border-gray-300"; 
-  else if (task.completed) circleClass += "bg-blue-500 border-blue-500";
-  else circleClass += "border-gray-300 hover:border-blue-500 bg-transparent";
+  if (selectionMode) {
+      circleClass += isSelected ? "bg-blue-500 border-blue-500" : "border-gray-300 bg-transparent";
+  } else {
+      if (isCompleting) circleClass += "animate-blink-3 border-gray-300"; 
+      else if (task.completed) circleClass += "bg-blue-500 border-blue-500";
+      else circleClass += "border-gray-300 hover:border-blue-500 bg-transparent";
+  }
 
   return (
-    <div ref={setNodeRef} style={style} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
-      {!isTrash && viewMode !== 'completed' && (
-        <div {...attributes} {...listeners} style={{ touchAction: 'none' }} className="mt-1 p-2 -ml-2 text-gray-300 cursor-grab active:cursor-grabbing touch-none"><GripVertical size={20} /></div>
-      )}
+    <div ref={setNodeRef} style={style} onClick={handleMainClick} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
+      
+      {/* КРУЖОЧЕК ИЛИ ЧЕКБОКС ВЫБОРА */}
       {!isTrash ? (
         <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
-          {(task.completed || isCompleting) && viewMode !== 'completed' && <div className={`w-2.5 h-2.5 bg-white rounded-full ${isCompleting ? '' : 'animate-in zoom-in'}`} />}
-          {viewMode === 'completed' && <CheckCircle2 size={16} className="text-white" />}
+          {/* Иконка внутри кружка */}
+          {selectionMode && isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
+          {!selectionMode && (task.completed || isCompleting) && viewMode !== 'completed' && <div className={`w-2.5 h-2.5 bg-white rounded-full ${isCompleting ? '' : 'animate-in zoom-in'}`} />}
+          {!selectionMode && viewMode === 'completed' && <CheckCircle2 size={16} className="text-white" />}
         </button>
       ) : (
-        <button onClick={() => actions.restore(task.id)} className="mt-0.5 text-blue-600 p-1"><RotateCcw size={20} /></button>
+        // В корзине в режиме выбора - чекбокс, иначе - восстановить
+        selectionMode ? (
+             <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
+                {isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
+             </button>
+        ) : (
+             <button onClick={() => actions.restore(task.id)} className="mt-0.5 text-blue-600 p-1"><RotateCcw size={20} /></button>
+        )
       )}
+
+      {/* ТЕЛО ЗАДАЧИ */}
       <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center gap-2">
            <div className={`text-[17px] leading-tight break-words transition-colors ${task.completed || isCompleting ? 'text-gray-400' : 'text-black'}`}>{task.title}</div>
@@ -102,38 +138,50 @@ const TaskItem = ({ task, actions, viewMode }) => {
         <div className="flex items-center flex-wrap gap-2 mt-1.5">
           {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run)}</span>}
           {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium"><RefreshCw size={10} /> {task.frequency}</span>}
+          {task.type !== 'reminder' && (
+            <button onPointerDown={e => e.stopPropagation()} onClick={(e) => performAction(e, task)} className="ml-auto text-blue-600 text-xs font-bold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded"><ExternalLink size={10}/> {task.type}</button>
+          )}
         </div>
       </div>
-      {isTrash && <button onClick={() => actions.delete(task.id)} className="shrink-0 text-red-500 p-1"><Trash2 size={18} /></button>}
+      
+      {/* ТРИ ТОЧКИ (РЕДАКТИРОВАНИЕ) - Только не в режиме выбора */}
+      {!selectionMode && (
+          <button onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(task); }} className="text-gray-400 p-1 hover:bg-gray-100 rounded-full">
+            <MoreHorizontal size={20} />
+          </button>
+      )}
     </div>
   );
 };
 
 // --- APP ---
 const App = () => {
-  const [view, setView] = useState('home'); // 'home', 'today', 'all', 'flagged', 'scheduled', 'completed', 'trash', or list_UUID
+  const [view, setView] = useState('home');
   const [tasks, setTasks] = useState(() => JSON.parse(localStorage.getItem('tasks') || '[]'));
   const [lists, setLists] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [userId, setUserId] = useState(null);
   
+  // Selection Mode
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
   // Modal States
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
-  
-  // New Task Data
+  const [editingId, setEditingId] = useState(null); // ID задачи, которую редактируем
+
+  // Form Data
   const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 3 });
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
   const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
   const [timeVal, setTimeVal] = useState(new Date().toTimeString().slice(0, 5));
 
-  // New List Data
   const [newListTitle, setNewListTitle] = useState('');
-
   const sensors = useSensors(useSensor(PointerSensor), useSensor(TouchSensor, { activationConstraint: { tolerance: 5 } }));
+  const [search, setSearch] = useState('');
 
-  // Init
   useEffect(() => {
     const handleStatus = () => setIsOnline(navigator.onLine);
     window.addEventListener('online', handleStatus); window.addEventListener('offline', handleStatus);
@@ -145,13 +193,11 @@ const App = () => {
     return () => { window.removeEventListener('online', handleStatus); window.removeEventListener('offline', handleStatus); };
   }, []);
 
-  // Data Sync
   useEffect(() => { localStorage.setItem('tasks', JSON.stringify(tasks)); }, [tasks]);
 
   useEffect(() => {
     if (!userId || !isOnline) return;
     const fetchData = async () => {
-      // 1. Get Tasks
       const { data: tData } = await supabase.from('tasks').select('*').eq('telegram_user_id', userId).order('position');
       if (tData) {
          const localTemp = tasks.filter(t => t.id.toString().startsWith('temp-'));
@@ -160,7 +206,6 @@ const App = () => {
          localTemp.forEach(t => merged.set(t.id, t));
          setTasks(Array.from(merged.values()).sort((a,b) => a.position - b.position));
       }
-      // 2. Get Lists
       const { data: lData } = await supabase.from('lists').select('*').eq('telegram_user_id', userId);
       if (lData) setLists(lData);
     };
@@ -170,27 +215,32 @@ const App = () => {
 
   // Actions
   const actions = {
-    createTask: async () => {
+    saveTask: async () => {
       if (!newT.title) return alert('Название?');
-      const tempId = 'temp-' + Date.now();
       let finalDate = null;
       if (hasDate) { finalDate = dateVal + (hasTime ? 'T' + timeVal : 'T09:00'); }
       
-      // Если мы в кастомном списке, добавляем list_id
-      const currentListId = (view !== 'home' && view !== 'today' && view !== 'all' && view !== 'upcoming' && view !== 'flagged') ? view : null;
-
-      const task = { ...newT, next_run: finalDate, telegram_user_id: userId, status: 'active', completed: false, is_deleted: false, position: tasks.length, id: tempId, list_id: currentListId };
-      
-      setTasks(prev => [...prev, task]);
-      setTaskModal(false);
-      setNewT({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 3 });
-      setHasDate(false); setHasTime(false);
-
-      if (isOnline) {
-        const { id, ...dbTask } = task;
-        const { data } = await supabase.from('tasks').insert([dbTask]).select();
-        if (data) setTasks(prev => prev.map(t => t.id === tempId ? data[0] : t));
+      if (editingId) {
+          // UPDATE EXISTING
+          setTasks(prev => prev.map(t => t.id === editingId ? { ...t, ...newT, next_run: finalDate } : t));
+          if (isOnline && !editingId.toString().startsWith('temp-')) {
+              const { id, ...updates } = { ...newT, next_run: finalDate };
+              await supabase.from('tasks').update(updates).eq('id', editingId);
+          }
+      } else {
+          // CREATE NEW
+          const tempId = 'temp-' + Date.now();
+          const currentListId = (view !== 'home' && view !== 'today' && view !== 'all' && view !== 'upcoming' && view !== 'flagged') ? view : null;
+          const task = { ...newT, next_run: finalDate, telegram_user_id: userId, status: 'active', completed: false, is_deleted: false, position: tasks.length, id: tempId, list_id: currentListId };
+          
+          setTasks(prev => [...prev, task]);
+          if (isOnline) {
+            const { id, ...dbTask } = task;
+            const { data } = await supabase.from('tasks').insert([dbTask]).select();
+            if (data) setTasks(prev => prev.map(t => t.id === tempId ? data[0] : t));
+          }
       }
+      closeModal();
     },
     createList: async () => {
       if (!newListTitle) return;
@@ -212,18 +262,19 @@ const App = () => {
         setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: false } : t));
         if (isOnline && !task.id.toString().startsWith('temp-')) await supabase.from('tasks').update({ completed: false }).eq('id', task.id);
     },
-    delete: async (id) => {
-      if (view === 'trash') {
-        setTasks(prev => prev.filter(t => t.id !== id));
-        if (isOnline) await supabase.from('tasks').delete().eq('id', id);
-      } else {
-        setTasks(prev => prev.map(t => t.id === id ? { ...t, is_deleted: true } : t));
-        if (isOnline) await supabase.from('tasks').update({ is_deleted: true }).eq('id', id);
-      }
-    },
     restore: async (id) => {
       setTasks(prev => prev.map(t => t.id === id ? { ...t, is_deleted: false } : t));
       if (isOnline) await supabase.from('tasks').update({ is_deleted: false }).eq('id', id);
+    },
+    delete: async (id) => { // Single delete
+        if (view === 'trash') {
+           if (!confirm('Удалить навсегда?')) return;
+           setTasks(prev => prev.filter(t => t.id !== id));
+           if (isOnline) await supabase.from('tasks').delete().eq('id', id);
+        } else {
+           setTasks(prev => prev.map(t => t.id === id ? { ...t, is_deleted: true } : t));
+           if (isOnline) await supabase.from('tasks').update({ is_deleted: true }).eq('id', id);
+        }
     },
     reorder: (e) => {
       const { active, over } = e;
@@ -237,19 +288,101 @@ const App = () => {
           return newOrder;
         });
       }
+    },
+    // --- BULK ACTIONS ---
+    toggleSelect: (id) => {
+        const newSet = new Set(selectedIds);
+        if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
+        setSelectedIds(newSet);
+    },
+    bulkDelete: async () => {
+        const count = selectedIds.size;
+        if (count === 0) return;
+        if (!confirm(`Удалить выбранные (${count})?`)) return;
+
+        const ids = Array.from(selectedIds);
+        if (view === 'trash') {
+            // Delete permanently
+            setTasks(prev => prev.filter(t => !selectedIds.has(t.id)));
+            if (isOnline) await supabase.from('tasks').delete().in('id', ids);
+        } else {
+            // Move to trash
+            setTasks(prev => prev.map(t => selectedIds.has(t.id) ? { ...t, is_deleted: true } : t));
+            if (isOnline) await supabase.from('tasks').update({ is_deleted: true }).in('id', ids);
+        }
+        setSelectionMode(false); setSelectedIds(new Set());
+    },
+    bulkRestore: async () => { // For trash
+        const ids = Array.from(selectedIds);
+        setTasks(prev => prev.map(t => selectedIds.has(t.id) ? { ...t, is_deleted: false } : t));
+        if (isOnline) await supabase.from('tasks').update({ is_deleted: false }).in('id', ids);
+        setSelectionMode(false); setSelectedIds(new Set());
+    },
+    clearAll: async () => {
+        // Clear all in current view (Trash or Completed)
+        if (!confirm(view === 'trash' ? 'Очистить корзину?' : 'Удалить все выполненные?')) return;
+        
+        // IDs to process
+        const idsToProcess = filteredTasks.map(t => t.id);
+        
+        if (view === 'trash') {
+             setTasks(prev => prev.filter(t => !idsToProcess.includes(t.id)));
+             if (isOnline) await supabase.from('tasks').delete().in('id', idsToProcess);
+        } else {
+             // Move completed to trash
+             setTasks(prev => prev.map(t => idsToProcess.includes(t.id) ? { ...t, is_deleted: true } : t));
+             if (isOnline) await supabase.from('tasks').update({ is_deleted: true }).in('id', idsToProcess);
+        }
     }
   };
 
-  // Filter Logic
-  const getFilteredTasks = () => {
+  const openEditModal = (task) => {
+      setEditingId(task.id);
+      setNewT({ 
+          title: task.title, 
+          description: task.description, 
+          type: task.type || 'reminder', 
+          frequency: task.frequency || 'once', 
+          priority: task.priority || 3 
+      });
+      if (task.next_run) {
+          const d = new Date(task.next_run);
+          setHasDate(true);
+          setDateVal(d.toISOString().slice(0, 10));
+          // Check if time is default or specific? For now assume always specific if present
+          setHasTime(task.next_run.includes('T') && !task.next_run.endsWith('T00:00:00')); 
+          if (task.next_run.includes('T')) setTimeVal(d.toTimeString().slice(0, 5));
+      } else {
+          setHasDate(false); setHasTime(false);
+      }
+      setTaskModal(true);
+  };
+
+  const closeModal = () => {
+      setTaskModal(false);
+      setEditingId(null);
+      setNewT({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 3 });
+      setHasDate(false); setHasTime(false);
+  };
+
+  // Filter Logic (Updated with Search)
+  const filteredTasks = useMemo(() => {
     let res = tasks;
+    
+    // Search (Title OR Date)
+    if (search) {
+        const lower = search.toLowerCase();
+        res = res.filter(t => {
+            const dateStr = t.next_run ? formatTime(t.next_run).toLowerCase() : '';
+            return t.title.toLowerCase().includes(lower) || dateStr.includes(lower);
+        });
+    }
+
     if (view === 'trash') return res.filter(t => t.is_deleted);
     
     res = res.filter(t => !t.is_deleted); // Not deleted
 
     if (view === 'completed') return res.filter(t => t.completed);
-    
-    // For normal lists, hide completed
     res = res.filter(t => !t.completed);
 
     const today = new Date().setHours(0,0,0,0);
@@ -262,11 +395,8 @@ const App = () => {
     
     // Custom List
     return res.filter(t => t.list_id === view);
-  };
+  }, [tasks, view, search]);
 
-  const filteredTasks = getFilteredTasks();
-  
-  // Counts for Smart Lists
   const counts = {
     today: tasks.filter(t => !t.is_deleted && !t.completed && t.next_run && new Date(t.next_run) >= new Date().setHours(0,0,0,0) && new Date(t.next_run) < new Date().setHours(0,0,0,0)+86400000).length,
     upcoming: tasks.filter(t => !t.is_deleted && !t.completed && t.next_run && new Date(t.next_run) >= new Date().setHours(0,0,0,0)+86400000).length,
@@ -274,113 +404,165 @@ const App = () => {
     flagged: tasks.filter(t => !t.is_deleted && !t.completed && t.priority === 5).length,
   };
 
-  // --- RENDER ---
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
       
-      {/* HOME SCREEN */}
+      {/* --- HOME SCREEN --- */}
       {view === 'home' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
           {/* Search */}
           <div className="relative bg-[#E3E3E8] rounded-xl flex items-center px-3 py-2">
             <Search className="text-gray-400" size={18} />
-            <input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск" />
+            <input 
+                className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" 
+                placeholder="Поиск (задача, дата)" 
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+            />
+            {search && <button onClick={() => setSearch('')}><X size={16} className="text-gray-400"/></button>}
           </div>
 
-          {/* Smart Lists Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <SmartListCard title="Сегодня" count={counts.today} icon={CalendarIcon} color="bg-blue-500" onClick={() => setView('today')} />
-            <SmartListCard title="Запланировано" count={counts.upcoming} icon={CalendarClock} color="bg-red-500" onClick={() => setView('upcoming')} />
-            <SmartListCard title="Все" count={counts.all} icon={Inbox} color="bg-gray-500" onClick={() => setView('all')} />
-            <SmartListCard title="С флажком" count={counts.flagged} icon={Flag} color="bg-orange-500" onClick={() => setView('flagged')} />
-          </div>
+          {/* Lists only if not searching (or filter lists too, but simple for now) */}
+          {!search && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <SmartListCard title="Сегодня" count={counts.today} icon={CalendarIcon} color="bg-blue-500" onClick={() => setView('today')} />
+                <SmartListCard title="Запланировано" count={counts.upcoming} icon={CalendarClock} color="bg-red-500" onClick={() => setView('upcoming')} />
+                <SmartListCard title="Все" count={counts.all} icon={Inbox} color="bg-gray-500" onClick={() => setView('all')} />
+                <SmartListCard title="С флажком" count={counts.flagged} icon={Flag} color="bg-orange-500" onClick={() => setView('flagged')} />
+              </div>
 
-          {/* Custom Lists */}
-          <div>
-             <h2 className="text-xl font-bold text-black mb-2 ml-1">Мои списки</h2>
-             <div className="bg-white rounded-xl overflow-hidden shadow-sm">
-               {lists.map((l, i) => (
-                 <div key={l.id} className={i !== lists.length - 1 ? 'border-b border-gray-100' : ''}>
-                    <UserListItem 
-                      list={l} 
-                      count={tasks.filter(t => t.list_id === l.id && !t.is_deleted && !t.completed).length} 
-                      onClick={() => setView(l.id)} 
-                    />
+              <div>
+                 <h2 className="text-xl font-bold text-black mb-2 ml-1">Мои списки</h2>
+                 <div className="bg-white rounded-xl overflow-hidden shadow-sm">
+                   {lists.map((l, i) => (
+                     <div key={l.id} className={i !== lists.length - 1 ? 'border-b border-gray-100' : ''}>
+                        <UserListItem 
+                          list={l} 
+                          count={tasks.filter(t => t.list_id === l.id && !t.is_deleted && !t.completed).length} 
+                          onClick={() => setView(l.id)} 
+                        />
+                     </div>
+                   ))}
+                   <div className={lists.length > 0 ? 'border-t border-gray-100' : ''}>
+                        <div onClick={() => setView('completed')} className="group bg-white p-3 flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
+                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"><CheckCircle2 size={16} className="text-gray-500" /></div>
+                            <span className="flex-1 text-[17px] font-medium text-black">Выполнено</span>
+                            <ChevronRight size={16} className="text-gray-300" />
+                        </div>
+                        <div className="border-t border-gray-100"></div>
+                        <div onClick={() => setView('trash')} className="group bg-white p-3 flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
+                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"><Trash2 size={16} className="text-gray-500" /></div>
+                            <span className="flex-1 text-[17px] font-medium text-black">Недавно удаленные</span>
+                            <ChevronRight size={16} className="text-gray-300" />
+                        </div>
+                   </div>
                  </div>
-               ))}
-               {/* Completed & Trash links inside lists block or separate? Apple puts lists here. */}
-             </div>
-          </div>
-          
-          {/* System Lists (Completed / Trash) */}
-          <div className="space-y-2">
-             <button onClick={() => setView('completed')} className="w-full bg-white p-3 rounded-xl flex items-center justify-between text-gray-600 active:scale-98 transition">
-               <div className="flex items-center gap-2"><CheckCircle2 size={18} /> Выполнено</div><ChevronRight size={16} className="text-gray-300"/>
-             </button>
-             <button onClick={() => setView('trash')} className="w-full bg-white p-3 rounded-xl flex items-center justify-between text-gray-600 active:scale-98 transition">
-               <div className="flex items-center gap-2"><Trash2 size={18} /> Недавно удаленные</div><ChevronRight size={16} className="text-gray-300"/>
-             </button>
-          </div>
+              </div>
 
-          {/* Add List Button */}
-          <div className="flex justify-end">
-             <button onClick={() => setListModal(true)} className="text-blue-600 font-medium text-lg p-2">Добавить список</button>
-          </div>
+              <div className="flex justify-end">
+                 <button onClick={() => setListModal(true)} className="text-blue-600 font-medium text-lg p-2">Добавить список</button>
+              </div>
+            </>
+          )}
+          
+          {/* Search Results (Simple List) */}
+          {search && (
+              <div className="space-y-2">
+                  {filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}
+              </div>
+          )}
         </div>
       )}
 
-      {/* LIST DETAIL SCREEN */}
+      {/* --- LIST DETAIL SCREEN --- */}
       {view !== 'home' && (
-        <div className="flex-1 flex flex-col h-full animate-in slide-in-from-right-8 duration-300">
+        <div className="flex-1 flex flex-col h-full animate-in slide-in-from-right-8 duration-300 relative">
           {/* Header */}
           <div className="px-4 pt-2 pb-2 bg-[#F2F2F7] sticky top-0 z-20 flex items-center justify-between">
-             <button onClick={() => setView('home')} className="flex items-center text-blue-600 font-medium text-[17px] -ml-2">
-               <ChevronLeft size={24} /> Списки
-             </button>
-             <div className="flex gap-2">
-                {/* Menu dots could go here */}
+             <div className="flex items-center gap-2">
+                 <button onClick={() => { setView('home'); setSelectionMode(false); }} className="flex items-center text-blue-600 font-medium text-[17px] -ml-2">
+                   <ChevronLeft size={24} /> Списки
+                 </button>
              </div>
+             
+             {/* Select Button */}
+             {filteredTasks.length > 0 && (
+                 <button onClick={() => { setSelectionMode(!selectionMode); setSelectedIds(new Set()); }} className="text-blue-600 font-medium text-[17px]">
+                    {selectionMode ? 'Готово' : 'Выбрать'}
+                 </button>
+             )}
           </div>
 
-          {/* List Title */}
-          <div className="px-4 pb-4">
+          {/* List Title & Clear All */}
+          <div className="px-4 pb-4 flex justify-between items-end">
              <h1 className="text-3xl font-bold text-blue-600">
                {view === 'today' ? 'Сегодня' : view === 'upcoming' ? 'Запланировано' : view === 'all' ? 'Все' : view === 'flagged' ? 'С флажком' : view === 'trash' ? 'Корзина' : view === 'completed' ? 'Выполнено' : lists.find(l => l.id === view)?.title || 'Список'}
              </h1>
+             
+             {/* Clear All Button for Trash/Completed */}
+             {(view === 'trash' || view === 'completed') && filteredTasks.length > 0 && !selectionMode && (
+                 <button onClick={actions.clearAll} className="text-red-500 text-sm font-medium bg-white/50 px-3 py-1 rounded-lg shadow-sm">
+                     Очистить
+                 </button>
+             )}
           </div>
 
-          {/* Tasks */}
+          {/* Tasks List */}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
             <div className="flex-1 px-4 pb-36 space-y-3 overflow-y-auto">
               <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
                 {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
-                  <TaskItem key={t.id} task={t} actions={actions} viewMode={view} />
+                  <TaskItem 
+                    key={t.id} 
+                    task={t} 
+                    actions={actions} 
+                    viewMode={view} 
+                    selectionMode={selectionMode}
+                    isSelected={selectedIds.has(t.id)}
+                    onSelect={actions.toggleSelect}
+                    onEdit={openEditModal}
+                  />
                 ))}
               </SortableContext>
             </div>
           </DndContext>
 
-          {/* Add Button (Only for active lists) */}
-          {view !== 'trash' && view !== 'completed' && (
+          {/* Add Button (Normal Mode) */}
+          {!selectionMode && view !== 'trash' && view !== 'completed' && (
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7] z-30">
               <button onClick={() => setTaskModal(true)} className="w-full bg-blue-600 text-white font-bold text-lg py-3.5 rounded-xl shadow-lg active:scale-[0.98] flex items-center justify-center gap-2">
                  <Plus size={24} strokeWidth={3} /> Новое напоминание
               </button>
             </div>
           )}
+
+          {/* Bulk Actions Bar (Selection Mode) */}
+          {selectionMode && (
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7] border-t border-gray-200 z-30 flex justify-between items-center">
+                <div className="text-gray-500 font-medium">Выбрано: {selectedIds.size}</div>
+                <div className="flex gap-4">
+                    {view === 'trash' ? (
+                        <button onClick={actions.bulkRestore} disabled={selectedIds.size === 0} className="text-blue-600 font-bold disabled:text-gray-400">Восстановить</button>
+                    ) : (
+                        // Maybe move/complete actions later
+                        <div/>
+                    )}
+                    <button onClick={actions.bulkDelete} disabled={selectedIds.size === 0} className="text-red-500 font-bold disabled:text-gray-300">Удалить</button>
+                </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* --- MODALS --- */}
-      
-      {/* NEW TASK MODAL */}
+      {/* --- TASK MODAL --- */}
       {taskModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
            <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[90vh] flex flex-col shadow-2xl animate-slide-up">
               <div className="flex justify-between items-center px-4 py-4 bg-[#F2F2F7] rounded-t-2xl border-b border-gray-200/50">
-                 <button onClick={() => setTaskModal(false)} className="text-blue-600 text-[17px]">Отмена</button>
-                 <span className="font-bold text-black text-[17px]">Новое</span>
-                 <button onClick={actions.createTask} className={`text-[17px] font-bold ${newT.title ? 'text-blue-600' : 'text-gray-400'}`}>Добавить</button>
+                 <button onClick={closeModal} className="text-blue-600 text-[17px]">Отмена</button>
+                 <span className="font-bold text-black text-[17px]">{editingId ? 'Правка' : 'Новое'}</span>
+                 <button onClick={actions.saveTask} className={`text-[17px] font-bold ${newT.title ? 'text-blue-600' : 'text-gray-400'}`}>{editingId ? 'Готово' : 'Добавить'}</button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-6">
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm">
@@ -410,6 +592,15 @@ const App = () => {
                           <ChevronRight size={16} className="text-gray-400 absolute right-3" />
                        </div>
                     </div>
+                    <div className="bg-white p-3.5 flex justify-between items-center">
+                        <span className="text-[17px] text-black">Действие</span>
+                        <div className="flex items-center gap-1 relative">
+                             <select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.type} onChange={e => setNewT({...newT, type: e.target.value})}>
+                                <option value="reminder">Нет</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option><option value="web_search">Поиск</option>
+                             </select>
+                             <ChevronRight size={16} className="text-gray-400 absolute right-0" />
+                        </div>
+                    </div>
                  </div>
               </div>
               <div className="flex justify-between items-center px-6 py-4 bg-[#F2F2F7] pb-8">
@@ -428,17 +619,9 @@ const App = () => {
            <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-in zoom-in-95">
               <h3 className="text-lg font-bold text-center mb-4">Новый список</h3>
               <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center">
-                  <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
-                      <List size={32} className="text-white" />
-                  </div>
+                  <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><List size={32} className="text-white" /></div>
               </div>
-              <input 
-                 className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                 placeholder="Название списка"
-                 value={newListTitle}
-                 onChange={e => setNewListTitle(e.target.value)}
-                 autoFocus
-              />
+              <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
               <div className="flex gap-2">
                   <button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button>
                   <button onClick={actions.createList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button>
@@ -446,7 +629,6 @@ const App = () => {
            </div>
         </div>
       )}
-
     </div>
   );
 };
