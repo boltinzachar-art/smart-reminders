@@ -3,8 +3,8 @@ import { supabase } from './supabaseClient';
 import WebApp from '@twa-dev/sdk';
 import { 
   Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
-  CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
-  Flag, Camera, CheckCircle2, List, Inbox, CalendarClock, MoreHorizontal, Check, X
+  CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, 
+  Flag, CheckCircle2, List, Inbox, CalendarClock, MoreHorizontal, Check, X, ArrowUp
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -30,8 +30,14 @@ const calculateNextRun = (current, freq) => {
 const formatTime = (dateStr) => {
   if (!dateStr) return '';
   const d = new Date(dateStr);
-  const isToday = d.toDateString() === new Date().toDateString();
-  return isToday ? d.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'}) : d.toLocaleDateString('ru-RU', {day:'numeric', month:'short'}) + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+};
+
+const getPriorityMarks = (p) => {
+  if (p === 1) return '!';
+  if (p === 2) return '!!';
+  if (p === 3) return '!!!';
+  return null;
 };
 
 const performAction = (e, task) => {
@@ -74,17 +80,9 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   const [isCompleting, setIsCompleting] = useState(false);
   const timerRef = useRef(null);
 
-  const handleMainClick = (e) => {
-    e.stopPropagation();
-    if (selectionMode) {
-        onSelect(task.id);
-    }
-  };
-
   const handleCircleClick = (e) => {
     e.stopPropagation();
     if (selectionMode) { onSelect(task.id); return; }
-    
     if (viewMode === 'completed') { actions.uncomplete(task); return; }
     if (viewMode === 'trash') return;
     if (isCompleting) { clearTimeout(timerRef.current); setIsCompleting(false); } 
@@ -94,6 +92,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   const style = { transform: CSS.Transform.toString(transform), transition: isDragging ? 'none' : 'all 0.3s ease', zIndex: isDragging ? 50 : 'auto', opacity: isDragging ? 0.8 : 1 };
   const isOverdue = task.next_run && new Date(task.next_run) < new Date() && !task.completed;
   const isTrash = viewMode === 'trash';
+  const priorityMarks = getPriorityMarks(task.priority);
   
   let circleClass = "mt-0.5 shrink-0 w-[24px] h-[24px] rounded-full border-2 flex items-center justify-center transition-all duration-300 ";
   if (selectionMode) {
@@ -105,7 +104,12 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   }
 
   return (
-    <div ref={setNodeRef} style={style} onClick={handleMainClick} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
+    <div ref={setNodeRef} style={style} onClick={(e) => selectionMode && onSelect(task.id)} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
+      
+      {!isTrash && viewMode !== 'completed' && !selectionMode && (
+        <div {...attributes} {...listeners} style={{ touchAction: 'none' }} className="mt-1 p-2 -ml-2 text-gray-300 cursor-grab active:cursor-grabbing touch-none"><GripVertical size={20} /></div>
+      )}
+
       {!isTrash ? (
         <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
           {selectionMode && isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
@@ -123,9 +127,10 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
       )}
 
       <div className="flex-1 min-w-0 pt-0.5">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+           {priorityMarks && <span className="text-blue-600 font-bold text-[17px] mr-1">{priorityMarks}</span>}
            <div className={`text-[17px] leading-tight break-words transition-colors ${task.completed || isCompleting ? 'text-gray-400' : 'text-black'}`}>{task.title}</div>
-           {task.priority === 5 && <Flag size={14} className="text-orange-500 fill-orange-500" />}
+           {task.is_flagged && <Flag size={14} className="text-orange-500 fill-orange-500 ml-1" />}
         </div>
         {task.description && <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>}
         <div className="flex items-center flex-wrap gap-2 mt-1.5">
@@ -146,6 +151,80 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
+// --- SPECIAL VIEW: SCHEDULED (SECTIONS) ---
+const ScheduledView = ({ tasks, actions, onEdit }) => {
+  // Генерируем секции
+  const sections = useMemo(() => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    
+    const result = [];
+    
+    // 1. Просроченные
+    const overdue = tasks.filter(t => t.next_run && new Date(t.next_run) < today);
+    if (overdue.length > 0) result.push({ title: 'Просрочено', data: overdue, isOverdue: true });
+
+    // 2. Следующие 15 дней (По дням)
+    for (let i = 0; i <= 14; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + i);
+        const dayStart = d.getTime();
+        const dayEnd = dayStart + 86400000;
+        
+        const dayTasks = tasks.filter(t => {
+            if (!t.next_run) return false;
+            const tTime = new Date(t.next_run).getTime();
+            return tTime >= dayStart && tTime < dayEnd;
+        });
+
+        // Форматируем заголовок
+        let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
+        if (i === 0) title = 'Сегодня';
+        if (i === 1) title = 'Завтра';
+
+        result.push({ 
+            title: title, 
+            data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), // Сортировка по времени
+            isCompact: dayTasks.length === 0 // Пустые секции сжаты
+        });
+    }
+
+    // 3. Будущие месяцы (упрощенно - следующие 3 месяца одной кучей или помесячно, сделаем "Позже")
+    const futureStart = new Date(today);
+    futureStart.setDate(today.getDate() + 15);
+    
+    const futureTasks = tasks.filter(t => t.next_run && new Date(t.next_run) >= futureStart);
+    if (futureTasks.length > 0) {
+        result.push({ title: 'Позже', data: futureTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)) });
+    }
+
+    return result;
+  }, [tasks]);
+
+  return (
+    <div className="pb-40">
+        {sections.map((section, idx) => (
+            <div key={idx} className={`mb-2 ${section.isCompact ? 'opacity-50' : ''}`}>
+                {/* Заголовок секции */}
+                <div className={`px-4 py-2 font-bold text-lg flex justify-between ${section.isOverdue ? 'text-red-500' : 'text-black'} ${section.isCompact ? 'text-sm py-1' : ''}`}>
+                    <span>{section.title}</span>
+                    {section.isCompact && <span className="text-gray-300 text-xs">Нет задач</span>}
+                </div>
+
+                {/* Задачи в секции */}
+                {!section.isCompact && (
+                    <div className="px-4 space-y-2">
+                        {section.data.map(task => (
+                            <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} />
+                        ))}
+                    </div>
+                )}
+            </div>
+        ))}
+    </div>
+  );
+};
+
 // --- APP ---
 const App = () => {
   const [view, setView] = useState('home');
@@ -153,19 +232,24 @@ const App = () => {
   const [lists, setLists] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [userId, setUserId] = useState(null);
+  
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 3 });
+  
+  // New Task State
+  const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
   const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
   const [timeVal, setTimeVal] = useState(new Date().toTimeString().slice(0, 5));
   const [newListTitle, setNewListTitle] = useState('');
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(TouchSensor, { activationConstraint: { tolerance: 5 } }));
   const [search, setSearch] = useState('');
+
+  const sensors = useSensors(useSensor(PointerSensor), useSensor(TouchSensor, { activationConstraint: { tolerance: 5 } }));
 
   useEffect(() => {
     const handleStatus = () => setIsOnline(navigator.onLine);
@@ -276,9 +360,7 @@ const App = () => {
         setSelectedIds(newSet);
     },
     bulkDelete: async () => {
-        const count = selectedIds.size;
-        if (count === 0) return;
-        if (!confirm(`Удалить выбранные (${count})?`)) return;
+        if (selectedIds.size === 0 || !confirm(`Удалить выбранные?`)) return;
         const ids = Array.from(selectedIds);
         if (view === 'trash') {
             setTasks(prev => prev.filter(t => !selectedIds.has(t.id)));
@@ -296,25 +378,27 @@ const App = () => {
         setSelectionMode(false); setSelectedIds(new Set());
     },
     clearAll: async () => {
-        if (!confirm(view === 'trash' ? 'Очистить корзину?' : 'Удалить все выполненные?')) return;
-        const idsToProcess = filteredTasks.map(t => t.id);
+        if (!confirm('Очистить?')) return;
+        const ids = filteredTasks.map(t => t.id);
         if (view === 'trash') {
-             setTasks(prev => prev.filter(t => !idsToProcess.includes(t.id)));
-             if (isOnline) await supabase.from('tasks').delete().in('id', idsToProcess);
+             setTasks(prev => prev.filter(t => !ids.includes(t.id)));
+             if (isOnline) await supabase.from('tasks').delete().in('id', ids);
         } else {
-             setTasks(prev => prev.map(t => idsToProcess.includes(t.id) ? { ...t, is_deleted: true } : t));
-             if (isOnline) await supabase.from('tasks').update({ is_deleted: true }).in('id', idsToProcess);
+             setTasks(prev => prev.map(t => ids.includes(t.id) ? { ...t, is_deleted: true } : t));
+             if (isOnline) await supabase.from('tasks').update({ is_deleted: true }).in('id', ids);
         }
     }
   };
 
   const openEditModal = (task) => {
       setEditingId(task.id);
-      setNewT({ title: task.title, description: task.description, type: task.type || 'reminder', frequency: task.frequency || 'once', priority: task.priority || 3 });
+      setNewT({ 
+          title: task.title, description: task.description, type: task.type || 'reminder', 
+          frequency: task.frequency || 'once', priority: task.priority || 0, is_flagged: task.is_flagged || false 
+      });
       if (task.next_run) {
           const d = new Date(task.next_run);
-          setHasDate(true);
-          setDateVal(d.toISOString().slice(0, 10));
+          setHasDate(true); setDateVal(d.toISOString().slice(0, 10));
           setHasTime(task.next_run.includes('T') && !task.next_run.endsWith('T09:00')); 
           if (task.next_run.includes('T')) setTimeVal(d.toTimeString().slice(0, 5));
       } else { setHasDate(false); setHasTime(false); }
@@ -323,7 +407,7 @@ const App = () => {
 
   const closeModal = () => {
       setTaskModal(false); setEditingId(null);
-      setNewT({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 3 });
+      setNewT({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
       setHasDate(false); setHasTime(false);
   };
 
@@ -331,10 +415,7 @@ const App = () => {
     let res = tasks;
     if (search) {
         const lower = search.toLowerCase();
-        res = res.filter(t => {
-            const dateStr = t.next_run ? formatTime(t.next_run).toLowerCase() : '';
-            return t.title.toLowerCase().includes(lower) || dateStr.includes(lower);
-        });
+        res = res.filter(t => t.title.toLowerCase().includes(lower) || (t.next_run && formatTime(t.next_run).includes(lower)));
     }
     if (view === 'trash') return res.filter(t => t.is_deleted);
     res = res.filter(t => !t.is_deleted);
@@ -343,9 +424,10 @@ const App = () => {
 
     const today = new Date().setHours(0,0,0,0);
     const tomorrow = today + 86400000;
+
     if (view === 'today') return res.filter(t => t.next_run && new Date(t.next_run) >= today && new Date(t.next_run) < tomorrow);
     if (view === 'upcoming') return res.filter(t => t.next_run && new Date(t.next_run) >= tomorrow);
-    if (view === 'flagged') return res.filter(t => t.priority === 5);
+    if (view === 'flagged') return res.filter(t => t.is_flagged);
     if (view === 'all') return res;
     return res.filter(t => t.list_id === view);
   }, [tasks, view, search]);
@@ -354,18 +436,18 @@ const App = () => {
     today: tasks.filter(t => !t.is_deleted && !t.completed && t.next_run && new Date(t.next_run) >= new Date().setHours(0,0,0,0) && new Date(t.next_run) < new Date().setHours(0,0,0,0)+86400000).length,
     upcoming: tasks.filter(t => !t.is_deleted && !t.completed && t.next_run && new Date(t.next_run) >= new Date().setHours(0,0,0,0)+86400000).length,
     all: tasks.filter(t => !t.is_deleted && !t.completed).length,
-    flagged: tasks.filter(t => !t.is_deleted && !t.completed && t.priority === 5).length,
+    flagged: tasks.filter(t => !t.is_deleted && !t.completed && t.is_flagged).length,
   };
 
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
       
-      {/* HOME */}
+      {/* --- HOME --- */}
       {view === 'home' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
           <div className="relative bg-[#E3E3E8] rounded-xl flex items-center px-3 py-2">
             <Search className="text-gray-400" size={18} />
-            <input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск (задача, дата)" value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск" value={search} onChange={e => setSearch(e.target.value)} />
             {search && <button onClick={() => setSearch('')}><X size={16} className="text-gray-400"/></button>}
           </div>
 
@@ -406,15 +488,11 @@ const App = () => {
             </>
           )}
           
-          {search && (
-              <div className="space-y-2">
-                  {filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}
-              </div>
-          )}
+          {search && <div className="space-y-2">{filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}</div>}
         </div>
       )}
 
-      {/* LIST DETAIL */}
+      {/* --- LIST DETAIL --- */}
       {view !== 'home' && (
         <div className="flex-1 flex flex-col h-full animate-in slide-in-from-right-8 duration-300 relative">
           <div className="px-4 pt-2 pb-2 bg-[#F2F2F7] sticky top-0 z-20 flex items-center justify-between">
@@ -425,6 +503,7 @@ const App = () => {
                  <button onClick={() => { setSelectionMode(!selectionMode); setSelectedIds(new Set()); }} className="text-blue-600 font-medium text-[17px]">{selectionMode ? 'Готово' : 'Выбрать'}</button>
              )}
           </div>
+
           <div className="px-4 pb-4 flex justify-between items-end">
              <h1 className="text-3xl font-bold text-blue-600">
                {view === 'today' ? 'Сегодня' : view === 'upcoming' ? 'Запланировано' : view === 'all' ? 'Все' : view === 'flagged' ? 'С флажком' : view === 'trash' ? 'Корзина' : view === 'completed' ? 'Выполнено' : lists.find(l => l.id === view)?.title || 'Список'}
@@ -433,15 +512,22 @@ const App = () => {
                  <button onClick={actions.clearAll} className="text-red-500 text-sm font-medium bg-white/50 px-3 py-1 rounded-lg shadow-sm">Очистить</button>
              )}
           </div>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
-            <div className="flex-1 px-4 pb-36 space-y-3 overflow-y-auto">
-              <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
-                {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
-                  <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
-                ))}
-              </SortableContext>
-            </div>
-          </DndContext>
+
+          {/* --- SCHEDULED VIEW (SECTIONS) OR NORMAL LIST --- */}
+          <div className="flex-1 px-4 pb-36 overflow-y-auto space-y-3">
+             {view === 'upcoming' && !selectionMode ? (
+                 <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal} />
+             ) : (
+                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
+                    <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
+                        {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
+                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
+                        ))}
+                    </SortableContext>
+                 </DndContext>
+             )}
+          </div>
+
           {!selectionMode && view !== 'trash' && view !== 'completed' && (
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7] z-30">
               <button onClick={() => setTaskModal(true)} className="w-full bg-blue-600 text-white font-bold text-lg py-3.5 rounded-xl shadow-lg active:scale-[0.98] flex items-center justify-center gap-2"><Plus size={24} strokeWidth={3} /> Новое напоминание</button>
@@ -487,12 +573,16 @@ const App = () => {
                  </div>
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
                     <div className="bg-white p-3.5 flex justify-between items-center">
+                        <div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-orange-500 flex items-center justify-center text-white"><Flag size={18} fill="white" /></div><span className="text-[17px] text-black">Флаг</span></div>
+                        <IOSSwitch checked={newT.is_flagged} onChange={v => setNewT({...newT, is_flagged: v})} />
+                    </div>
+                    <div className="bg-white p-3.5 flex justify-between items-center">
                        <span className="text-[17px] text-black">Приоритет</span>
                        <div className="flex items-center gap-1">
                           <select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.priority} onChange={e => setNewT({...newT, priority: parseInt(e.target.value)})}>
-                             <option value="1">Низкий</option><option value="3">Нет</option><option value="5">Высокий</option>
+                             <option value="0">Нет</option><option value="1">Низкий</option><option value="2">Средний</option><option value="3">Высокий</option>
                           </select>
-                          <span className="absolute right-9 text-gray-500">{newT.priority === 5 ? '!!!' : newT.priority === 1 ? '!' : 'Нет'}</span>
+                          <span className="absolute right-9 text-gray-500">{newT.priority === 3 ? '!!!' : newT.priority === 2 ? '!!' : newT.priority === 1 ? '!' : 'Нет'}</span>
                           <ChevronRight size={16} className="text-gray-400 absolute right-3" />
                        </div>
                     </div>
@@ -507,17 +597,9 @@ const App = () => {
                     </div>
                  </div>
               </div>
-              <div className="flex justify-between items-center px-6 py-4 bg-[#F2F2F7] pb-8">
-                  <button onClick={() => setHasDate(!hasDate)} className="text-blue-600 active:opacity-50 transition-opacity"><CalendarIcon size={28} /></button>
-                  <button className="text-blue-600 active:opacity-50 transition-opacity"><MapPin size={28} /></button>
-                  <button onClick={() => setNewT({...newT, priority: newT.priority === 5 ? 3 : 5})} className={`transition-colors ${newT.priority === 5 ? 'text-orange-500 fill-orange-500' : 'text-blue-600'}`}><Flag size={28} /></button>
-                  <button className="text-blue-600 active:opacity-50 transition-opacity"><Camera size={28} /></button>
-              </div>
            </div>
         </div>
       )}
-
-      {/* LIST MODAL */}
       {listModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-in zoom-in-95">
@@ -531,6 +613,48 @@ const App = () => {
            </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// --- SEPARATE COMPONENT FOR SCHEDULED VIEW ---
+const ScheduledView = ({ tasks, actions, onEdit }) => {
+  const sections = useMemo(() => {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const result = [];
+    const overdue = tasks.filter(t => t.next_run && new Date(t.next_run) < today);
+    if (overdue.length > 0) result.push({ title: 'Просрочено', data: overdue, isOverdue: true });
+
+    for (let i = 0; i <= 14; i++) {
+        const d = new Date(today); d.setDate(today.getDate() + i);
+        const dayStart = d.getTime(); const dayEnd = dayStart + 86400000;
+        const dayTasks = tasks.filter(t => {
+            if (!t.next_run) return false;
+            const tTime = new Date(t.next_run).getTime();
+            return tTime >= dayStart && tTime < dayEnd;
+        });
+        let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
+        if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
+        result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
+    }
+    const futureStart = new Date(today); futureStart.setDate(today.getDate() + 15);
+    const futureTasks = tasks.filter(t => t.next_run && new Date(t.next_run) >= futureStart);
+    if (futureTasks.length > 0) {
+        result.push({ title: 'Позже', data: futureTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)) });
+    }
+    return result;
+  }, [tasks]);
+
+  return (
+    <div className="pb-40">
+        {sections.map((section, idx) => (
+            <div key={idx} className={`mb-2 ${section.isCompact ? 'opacity-50' : ''}`}>
+                <div className={`px-4 py-2 font-bold text-lg flex justify-between ${section.isOverdue ? 'text-red-500' : 'text-black'} ${section.isCompact ? 'text-sm py-1' : ''}`}>
+                    <span>{section.title}</span>
+                </div>
+                {!section.isCompact && <div className="px-4 space-y-2">{section.data.map(task => <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}
+            </div>
+        ))}
     </div>
   );
 };
