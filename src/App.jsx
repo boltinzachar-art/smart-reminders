@@ -1,52 +1,133 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import WebApp from '@twa-dev/sdk';
-import { Plus, Calendar, Clock, Trash2, Search, ExternalLink, RefreshCw, ChevronRight, GripVertical, Cloud, CloudOff } from 'lucide-react';
-// Библиотеки для Drag & Drop
+import { Plus, Search, ExternalLink, RefreshCw, ChevronRight, CloudOff, RotateCcw, Trash2 } from 'lucide-react';
+// Drag & Drop
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// --- КОМПОНЕНТ ОДНОЙ ПЛИТКИ ---
-const SortableTaskItem = ({ task, completeTask, deleteTask, performAction, formatTime, isOverdue }) => {
+// --- КОМПОНЕНТ КАРТОЧКИ (Обновленный дизайн) ---
+const SortableTaskItem = ({ task, completeTask, deleteTask, restoreTask, performAction, formatTime, isOverdue, isTrashMode }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 50 : 'auto',
-    opacity: isDragging ? 0.8 : 1,
+  // Локальное состояние для анимации "мигания" перед исчезновением
+  const [isFlashing, setIsFlashing] = useState(false);
+
+  const handleComplete = (e) => {
+    e.stopPropagation(); // Чтобы не сработал драг
+    setIsFlashing(true); // 1. Включаем мигание
+    
+    // 2. Ждем анимацию и выполняем
+    setTimeout(() => {
+        completeTask(task);
+        // Сбрасываем флеш, если вдруг задача осталась в списке (например, повторяющаяся)
+        setTimeout(() => setIsFlashing(false), 100); 
+    }, 600); 
   };
 
-  return (
-    <div ref={setNodeRef} style={style} className="group w-full max-w-full bg-white rounded-xl p-3 shadow-[0_1px_2px_rgba(0,0,0,0.05)] flex items-start gap-3 touch-manipulation">
-       {/* Ручка для перетаскивания (С УЛУЧШЕННОЙ ЗОНОЙ НАЖАТИЯ) */}
-       <div {...attributes} {...listeners} className="mt-1 p-2 -ml-2 text-gray-300 touch-none cursor-grab active:cursor-grabbing">
-         <GripVertical size={20} />
-       </div>
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: isDragging ? 'none' : 'all 0.3s ease', // Плавная анимация удаления/перемещения
+    zIndex: isDragging ? 50 : 'auto',
+    opacity: isDragging ? 0.9 : 1,
+    scale: isDragging ? '1.02' : '1',
+  };
 
-       <button onClick={() => completeTask(task)} className="mt-1 shrink-0 w-[22px] h-[22px] rounded-full border-2 border-gray-300 hover:border-blue-500 focus:outline-none transition-colors"/>
+  // Если это корзина - драг не нужен
+  const dndProps = isTrashMode ? {} : { ...attributes, ...listeners };
+
+  return (
+    <div 
+        ref={setNodeRef} 
+        style={style} 
+        {...dndProps}
+        className={`
+            group w-full max-w-full bg-white rounded-xl p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] 
+            flex items-start gap-3 touch-manipulation transition-all duration-500
+            ${isFlashing ? 'bg-gray-50' : 'bg-white'} 
+            ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}
+        `}
+    >
+       {/* КРУЖОЧЕК (ЧЕКБОКС) ИЛИ ВОССТАНОВЛЕНИЕ */}
+       {!isTrashMode ? (
+           <button 
+             onPointerDown={(e) => e.stopPropagation()} // Важно: чтобы не начинался драг при клике на кнопку
+             onClick={handleComplete}
+             className={`
+                mt-0.5 shrink-0 w-[24px] h-[24px] rounded-full border-2 transition-all duration-300 flex items-center justify-center
+                ${isFlashing 
+                    ? 'bg-blue-500 border-blue-500 scale-110'  // В момент клика (вспышка)
+                    : task.completed 
+                        ? 'bg-blue-500 border-blue-500'         // Если уже выполнена (во вкладке Выполненные)
+                        : 'border-gray-300 hover:border-blue-500 bg-transparent'
+                }
+             `}
+           >
+             {(isFlashing || task.completed) && (
+                 <div className="w-2.5 h-2.5 bg-white rounded-full animate-in zoom-in duration-200" />
+             )}
+           </button>
+       ) : (
+           <button onClick={() => restoreTask(task.id)} className="mt-0.5 shrink-0 text-blue-600 p-1">
+              <RotateCcw size={20} />
+           </button>
+       )}
        
-       <div className="flex-1 min-w-0">
+       {/* ТЕКСТ ЗАДАЧИ */}
+       <div className="flex-1 min-w-0 pt-0.5">
           <div className="flex justify-between items-start">
-            <span className={`text-[17px] leading-tight break-words ${task.completed ? 'line-through text-gray-400' : 'text-black'}`}>{task.title}</span>
+            <span className={`
+                text-[17px] leading-tight break-words transition-colors duration-500
+                ${(task.completed || isFlashing) ? 'text-gray-400 line-through' : 'text-black font-normal'}
+            `}>
+              {task.title}
+            </span>
           </div>
-          {task.description && <p className="text-gray-500 text-[15px] mt-0.5 line-clamp-2 leading-snug break-words">{task.description}</p>}
+
+          {task.description && (
+             // Жирный, но бледный шрифт для описания (как в Apple Reminders)
+            <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">
+                {task.description}
+            </p>
+          )}
+
+          {/* МЕТА-ДАННЫЕ */}
           <div className="flex items-center flex-wrap gap-2 mt-2">
-             <span className={`text-xs font-medium ${isOverdue(task.next_run) ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run)}</span>
-             {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5"><RefreshCw size={10} /> {task.frequency}</span>}
+             <span className={`text-xs font-semibold ${isOverdue(task.next_run) && !task.completed ? 'text-red-500' : 'text-gray-400'}`}>
+                {formatTime(task.next_run)}
+             </span>
+             
+             {task.frequency !== 'once' && (
+               <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium">
+                 <RefreshCw size={10} /> {task.frequency}
+               </span>
+             )}
+
              {task.type !== 'reminder' && (
-                <button onClick={(e) => { e.stopPropagation(); performAction(task); }} className="ml-auto text-blue-600 text-xs font-medium flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded"><ExternalLink size={10}/> {task.type}</button>
+                <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); performAction(task); }} className="ml-auto text-blue-600 text-xs font-bold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded">
+                   <ExternalLink size={10}/> {task.type}
+                </button>
              )}
           </div>
        </div>
-       <button onClick={() => deleteTask(task.id)} className="shrink-0 text-gray-300 hover:text-red-500 p-1"><Trash2 size={16} /></button>
+
+       {/* УДАЛЕНИЕ */}
+       {isTrashMode ? (
+          // В корзине - удаление навсегда
+          <button onClick={() => deleteTask(task.id)} className="shrink-0 text-red-500 p-1"><Trash2 size={18} /></button>
+       ) : (
+          // В обычном списке - в корзину (скрытая кнопка, покажем если свайп, но пока просто кнопка справа для удобства)
+          // Для Apple стиля лучше вообще убрать мусорку из карточки, но оставим для функционала
+          <button onPointerDown={(e) => e.stopPropagation()} onClick={() => deleteTask(task.id)} className="shrink-0 text-gray-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+             <Trash2 size={18} />
+          </button>
+       )}
     </div>
   );
 };
 
 const App = () => {
-  // Загружаем сразу из LocalStorage
   const [tasks, setTasks] = useState(() => {
     const saved = localStorage.getItem('tasks');
     return saved ? JSON.parse(saved) : [];
@@ -54,20 +135,25 @@ const App = () => {
   
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [filter, setFilter] = useState('all');
+  
+  // Фильтры: all, today, upcoming, completed, trash
+  const [filter, setFilter] = useState('all'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [userId, setUserId] = useState(null);
 
   const [newTask, setNewTask] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
 
-  // Сенсоры (ОСТАВИЛИ ЗАДЕРЖКУ 250МС ДЛЯ СТАБИЛЬНОСТИ)
+  // Настройка сенсоров для плавного скролла и драга
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }), 
+    useSensor(TouchSensor, { 
+        // ВАЖНО: Драг начнется только если держать палец 200мс. 
+        // Это позволяет скроллить страницу, не перетаскивая задачи случайно.
+        activationConstraint: { delay: 200, tolerance: 8 } 
+    }), 
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // 1. Инициализация
   useEffect(() => {
     window.addEventListener('online', () => setIsOnline(true));
     window.addEventListener('offline', () => setIsOnline(false));
@@ -78,26 +164,13 @@ const App = () => {
       WebApp.enableClosingConfirmation();
       WebApp.setHeaderColor('#F2F2F7'); 
       WebApp.setBackgroundColor('#F2F2F7');
-      // Попытка отключить свайпы (может не работать на старых версиях)
-      if (WebApp.isVersionAtLeast('8.0')) {
-        WebApp.disableVerticalSwipes();
-      }
     } else {
       setUserId(777);
     }
-
-    return () => {
-      window.removeEventListener('online', () => setIsOnline(true));
-      window.removeEventListener('offline', () => setIsOnline(false));
-    };
   }, []);
 
-  // 2. Сохранение
-  useEffect(() => {
-    localStorage.setItem('tasks', JSON.stringify(tasks));
-  }, [tasks]);
+  useEffect(() => { localStorage.setItem('tasks', JSON.stringify(tasks)); }, [tasks]);
 
-  // 3. Синхронизация
   useEffect(() => {
     if (userId && isOnline) {
       syncTasks();
@@ -108,11 +181,11 @@ const App = () => {
 
   const syncTasks = async () => {
     try {
+      // Загружаем ВСЕ задачи: и активные, и удаленные, и выполненные
       let query = supabase
         .from('tasks')
         .select('*')
         .eq('telegram_user_id', userId)
-        .eq('completed', false)
         .order('position', { ascending: true })
         .order('next_run', { ascending: true });
 
@@ -123,14 +196,12 @@ const App = () => {
         const localTempTasks = tasks.filter(t => t.id.toString().startsWith('temp-'));
         const combined = [...data, ...localTempTasks]; 
         setTasks(combined);
-        localStorage.setItem('tasks', JSON.stringify(combined));
       }
     } catch (error) {
       console.error('Sync error:', error);
     }
   };
 
-  // === DRAG & DROP ===
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     if (active.id !== over.id) {
@@ -138,7 +209,6 @@ const App = () => {
         const oldIndex = items.findIndex(t => t.id === active.id);
         const newIndex = items.findIndex(t => t.id === over.id);
         const newOrder = arrayMove(items, oldIndex, newIndex);
-        
         if (isOnline) updatePositions(newOrder);
         return newOrder;
       });
@@ -147,15 +217,9 @@ const App = () => {
 
   const updatePositions = async (orderedTasks) => {
     const updates = orderedTasks.map((t, index) => ({
-        id: t.id,
-        position: index,
-        title: t.title, 
-        telegram_user_id: userId 
+        id: t.id, position: index, title: t.title, telegram_user_id: userId 
     })).filter(t => !t.id.toString().startsWith('temp-'));
-
-    if (updates.length > 0) {
-        await supabase.from('tasks').upsert(updates);
-    }
+    if (updates.length > 0) await supabase.from('tasks').upsert(updates);
   };
 
   const createTask = async () => {
@@ -173,7 +237,7 @@ const App = () => {
       telegram_user_id: userId,
       status: 'active',
       completed: false,
-      action_template: template,
+      is_deleted: false, // Новое поле
       position: tasks.length,
       id: 'temp-' + Date.now() 
     };
@@ -186,33 +250,22 @@ const App = () => {
         const { id, ...taskForDb } = optimisticTask;
         try {
             const { data } = await supabase.from('tasks').insert([taskForDb]).select();
-            if (data) {
-                setTasks(prev => prev.map(t => t.id === optimisticTask.id ? data[0] : t));
-            }
-        } catch (e) {
-            console.error('Save error (will retry on sync)', e);
-        }
+            if (data) setTasks(prev => prev.map(t => t.id === optimisticTask.id ? data[0] : t));
+        } catch (e) { console.error(e); }
     }
   };
 
   const completeTask = async (task) => {
     const isRecurring = task.frequency !== 'once';
     
-    setTasks(current => {
-        const updated = current.map(t => {
-            if (t.id === task.id) {
-                return isRecurring 
-                    ? { ...t, next_run: calculateNextRun(t.next_run, t.frequency) }
-                    : { ...t, completed: true };
-            }
-            return t;
-        });
-        return updated;
-    });
-
-    if (!isRecurring) {
-        setTimeout(() => setTasks(curr => curr.filter(t => t.id !== task.id)), 300);
-    }
+    setTasks(current => current.map(t => {
+        if (t.id === task.id) {
+            return isRecurring 
+                ? { ...t, next_run: calculateNextRun(t.next_run, t.frequency) }
+                : { ...t, completed: true };
+        }
+        return t;
+    }));
 
     if (isOnline && !task.id.toString().startsWith('temp-')) {
         if (isRecurring) {
@@ -224,15 +277,31 @@ const App = () => {
     }
   };
 
-  // Вспомогательные
   const deleteTask = async (taskId) => {
-    if (!confirm('Удалить?')) return;
-    setTasks(curr => curr.filter(t => t.id !== taskId));
-    if (isOnline && !taskId.toString().startsWith('temp-')) {
-        await supabase.from('tasks').delete().eq('id', taskId);
+    // Если мы уже в корзине - удаляем навсегда
+    if (filter === 'trash') {
+        if (!confirm('Удалить навсегда?')) return;
+        setTasks(curr => curr.filter(t => t.id !== taskId));
+        if (isOnline && !taskId.toString().startsWith('temp-')) {
+            await supabase.from('tasks').delete().eq('id', taskId);
+        }
+    } else {
+        // Иначе - мягкое удаление (перенос в корзину)
+        setTasks(curr => curr.map(t => t.id === taskId ? { ...t, is_deleted: true } : t));
+        if (isOnline && !taskId.toString().startsWith('temp-')) {
+            await supabase.from('tasks').update({ is_deleted: true }).eq('id', taskId);
+        }
     }
   };
 
+  const restoreTask = async (taskId) => {
+      setTasks(curr => curr.map(t => t.id === taskId ? { ...t, is_deleted: false } : t));
+      if (isOnline && !taskId.toString().startsWith('temp-')) {
+          await supabase.from('tasks').update({ is_deleted: false }).eq('id', taskId);
+      }
+  };
+
+  // === HELPERS ===
   const calculateNextRun = (current, freq) => {
     const date = new Date(current);
     if (freq === 'daily') date.setDate(date.getDate() + 1);
@@ -252,14 +321,26 @@ const App = () => {
   const getFilteredTasks = () => {
     let filtered = tasks;
     if (searchQuery) filtered = filtered.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    
     const now = new Date();
     const todayStart = new Date(now.setHours(0, 0, 0, 0));
     const tomorrowStart = new Date(todayStart);
     tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+    // Сначала отсеиваем по статусу удаления
+    if (filter === 'trash') {
+        return filtered.filter(t => t.is_deleted);
+    } else {
+        // Для всех остальных вкладок - показываем НЕ удаленные
+        filtered = filtered.filter(t => !t.is_deleted);
+    }
+
+    // Теперь фильтруем по вкладкам
     switch (filter) {
-      case 'today': return filtered.filter(t => new Date(t.next_run) >= todayStart && new Date(t.next_run) < tomorrowStart);
-      case 'upcoming': return filtered.filter(t => new Date(t.next_run) >= tomorrowStart);
-      default: return filtered;
+      case 'today': return filtered.filter(t => !t.completed && new Date(t.next_run) >= todayStart && new Date(t.next_run) < tomorrowStart);
+      case 'upcoming': return filtered.filter(t => !t.completed && new Date(t.next_run) >= tomorrowStart);
+      case 'completed': return filtered.filter(t => t.completed); // Новая вкладка
+      default: return filtered.filter(t => !t.completed); // 'all' показывает только активные
     }
   };
 
@@ -269,37 +350,53 @@ const App = () => {
     return isToday ? date.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'}) : date.toLocaleDateString('ru-RU', {day:'numeric', month:'short'}) + ' ' + date.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
   };
 
+  const isOverdue = (dateStr) => new Date(dateStr) < new Date();
   const filteredList = getFilteredTasks();
-  const overdueCount = tasks.filter(t => new Date(t.next_run) < new Date() && !t.completed).length;
+  const overdueCount = tasks.filter(t => !t.completed && !t.is_deleted && isOverdue(t.next_run)).length;
 
   return (
     <div className="min-h-[100dvh] w-full overflow-x-hidden bg-[#F2F2F7] text-black font-sans flex flex-col">
       {/* ШАПКА */}
       <div className="w-full px-4 pt-14 pb-2 bg-[#F2F2F7] sticky top-0 z-20">
         <div className="flex justify-between items-center mb-3">
-           <h1 className="text-3xl font-bold text-black tracking-tight ml-1">Напоминания</h1>
+           <h1 className="text-3xl font-bold text-black tracking-tight ml-1">
+             {filter === 'trash' ? 'Корзина' : filter === 'completed' ? 'Выполнено' : 'Напоминания'}
+           </h1>
            <div className="flex items-center gap-2">
                {!isOnline && <CloudOff className="text-gray-400" size={20} />}
                {overdueCount > 0 && <span className="text-red-500 font-semibold text-sm bg-white px-2 py-1 rounded-lg shadow-sm">{overdueCount}</span>}
            </div>
         </div>
+        
         <div className="relative mb-4 w-full">
           <Search className="absolute left-3 top-2 text-gray-400" size={18} />
           <input className="w-full pl-9 pr-4 py-2 bg-[#E3E3E8] rounded-xl text-base text-black placeholder-gray-500 focus:outline-none focus:bg-white transition-colors" placeholder="Поиск" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
         </div>
-        <div className="flex gap-2 pb-2 overflow-x-auto hide-scrollbar">
-           {['all', 'today', 'upcoming'].map(f => (
-             <button key={f} onClick={() => setFilter(f)} className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${filter === f ? 'bg-black text-white' : 'bg-white text-gray-600 shadow-sm'}`}>{f === 'all' ? 'Все' : f === 'today' ? 'Сегодня' : 'Будущие'}</button>
-           ))}
+
+        <div className="w-full overflow-x-auto hide-scrollbar">
+           <div className="flex gap-2 pb-2">
+             {/* Меню вкладок */}
+             {[
+               {id: 'all', label: 'Все'}, 
+               {id: 'today', label: 'Сегодня'}, 
+               {id: 'upcoming', label: 'Будущие'},
+               {id: 'completed', label: 'Готовые'},
+               {id: 'trash', label: 'Корзина'}
+             ].map(f => (
+               <button key={f.id} onClick={() => setFilter(f.id)} className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${filter === f.id ? 'bg-black text-white' : 'bg-white text-gray-600 shadow-sm'}`}>
+                 {f.label}
+               </button>
+             ))}
+           </div>
         </div>
       </div>
 
-      {/* СПИСОК (DRAG & DROP) */}
+      {/* СПИСОК */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className="flex-1 w-full px-4 pb-32 space-y-3">
             <SortableContext items={filteredList} strategy={verticalListSortingStrategy}>
                 {filteredList.length === 0 ? (
-                    <div className="text-center py-20 text-gray-400"><p>Нет напоминаний</p></div>
+                    <div className="text-center py-20 text-gray-400"><p>Пусто</p></div>
                 ) : (
                     filteredList.map(task => (
                         <SortableTaskItem 
@@ -307,9 +404,11 @@ const App = () => {
                             task={task} 
                             completeTask={completeTask} 
                             deleteTask={deleteTask} 
+                            restoreTask={restoreTask}
                             performAction={performAction}
                             formatTime={formatTime}
                             isOverdue={(d) => new Date(d) < new Date()}
+                            isTrashMode={filter === 'trash'} // Передаем режим корзины
                         />
                     ))
                 )}
