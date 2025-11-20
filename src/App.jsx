@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import WebApp from '@twa-dev/sdk';
-import { Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, Calendar } from 'lucide-react';
+// Проверяем все иконки, которые используются
+import { Plus, Search, ExternalLink, RefreshCw, ChevronRight, CloudOff, RotateCcw, Trash2 } from 'lucide-react';
+
+// Библиотеки Drag & Drop
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// --- КАРТОЧКА ЗАДАЧИ ---
+// --- КОМПОНЕНТ КАРТОЧКИ ---
 const SortableTaskItem = ({ task, completeTask, deleteTask, restoreTask, performAction, formatTime, isOverdue, isTrashMode }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isFlashing, setIsFlashing] = useState(false);
@@ -66,7 +69,6 @@ const SortableTaskItem = ({ task, completeTask, deleteTask, restoreTask, perform
             <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>
           )}
 
-          {/* Мета-данные (показываем, только если есть время или тип действия) */}
           <div className="flex items-center flex-wrap gap-2 mt-1.5">
              {task.next_run && (
                  <span className={`text-xs font-semibold ${isOverdue(task.next_run) && !task.completed ? 'text-red-500' : 'text-gray-400'}`}>
@@ -93,6 +95,7 @@ const SortableTaskItem = ({ task, completeTask, deleteTask, restoreTask, perform
   );
 };
 
+// --- ОСНОВНОЙ КОМПОНЕНТ ---
 const App = () => {
   const [tasks, setTasks] = useState(() => {
     const saved = localStorage.getItem('tasks');
@@ -120,7 +123,6 @@ const App = () => {
     if (WebApp.initDataUnsafe.user) {
       setUserId(WebApp.initDataUnsafe.user.id);
       WebApp.expand();
-      // ВАЖНО: Включаем это, но основной фикс - в CSS
       WebApp.enableClosingConfirmation(); 
       WebApp.setHeaderColor('#F2F2F7'); 
       WebApp.setBackgroundColor('#F2F2F7');
@@ -183,7 +185,6 @@ const App = () => {
   const createTask = async () => {
     if (!newTask.title) return alert('Название?');
     
-    // ТЕПЕРЬ МОЖНО NULL (БЕЗ ВРЕМЕНИ)
     const runTime = newTask.next_run ? newTask.next_run : null;
 
     let template = null;
@@ -216,7 +217,7 @@ const App = () => {
   };
 
   const completeTask = async (task) => {
-    const isRecurring = task.frequency !== 'once' && task.next_run; // Повтор только если есть дата
+    const isRecurring = task.frequency !== 'once' && task.next_run;
     
     setTasks(current => current.map(t => {
         if (t.id === task.id) {
@@ -290,7 +291,6 @@ const App = () => {
       case 'today': return filtered.filter(t => !t.completed && t.next_run && new Date(t.next_run) >= todayStart && new Date(t.next_run) < tomorrowStart);
       case 'upcoming': return filtered.filter(t => !t.completed && t.next_run && new Date(t.next_run) >= tomorrowStart);
       case 'completed': return filtered.filter(t => t.completed);
-      // ALL теперь показывает все активные (и с датой, и без)
       default: return filtered.filter(t => !t.completed);
     }
   };
@@ -373,28 +373,57 @@ const App = () => {
          </button>
       </div>
 
-      {/* МОДАЛКА */}
+      {/* ИСПРАВЛЕННАЯ МОДАЛКА (Без кастомных анимаций, классический стиль) */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
-           <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl p-4 animate-slide-up max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
+           <div className="bg-gray-100 w-full sm:max-w-md rounded-t-2xl p-4 max-h-[90vh] overflow-y-auto shadow-2xl">
+              
+              {/* Хедер модалки */}
               <div className="flex justify-between items-center mb-4 px-2">
                  <button onClick={() => setShowAddModal(false)} className="text-blue-600 text-[17px]">Отмена</button>
                  <h3 className="font-bold text-black text-[17px]">Новое</h3>
                  <button onClick={createTask} className="text-blue-600 font-bold text-[17px]">Добавить</button>
               </div>
+
+              {/* Блок ввода */}
               <div className="bg-white rounded-xl overflow-hidden mb-6 shadow-sm">
-                 <input className="w-full p-4 bg-white text-[17px] border-b border-gray-100 focus:outline-none text-black placeholder-gray-400" placeholder="Название" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} autoFocus />
-                 <textarea className="w-full p-4 bg-white text-[17px] focus:outline-none resize-none h-24 text-black placeholder-gray-400" placeholder="Заметки" value={newTask.description} onChange={e => setNewTask({...newTask, description: e.target.value})} />
+                 <input 
+                   className="w-full p-4 bg-white text-[17px] border-b border-gray-100 focus:outline-none text-black placeholder-gray-400"
+                   placeholder="Название"
+                   value={newTask.title || ''}
+                   onChange={e => setNewTask({...newTask, title: e.target.value})}
+                   autoFocus
+                 />
+                 <textarea 
+                   className="w-full p-4 bg-white text-[17px] focus:outline-none resize-none h-24 text-black placeholder-gray-400"
+                   placeholder="Заметки"
+                   value={newTask.description || ''}
+                   onChange={e => setNewTask({...newTask, description: e.target.value})}
+                 />
               </div>
+
+              {/* Настройки */}
               <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-200">
+                 {/* Дата */}
                  <div className="bg-white p-3.5 flex justify-between items-center">
                     <span className="text-black text-[17px]">Дата и время</span>
-                    <input type="datetime-local" className="bg-[#F2F2F7] text-black rounded-md p-1 text-[15px] outline-none" value={newTask.next_run} onChange={e => setNewTask({...newTask, next_run: e.target.value})} />
+                    <input 
+                       type="datetime-local" 
+                       className="bg-gray-100 text-black rounded-md p-1 text-[15px] outline-none"
+                       value={newTask.next_run || ''}
+                       onChange={e => setNewTask({...newTask, next_run: e.target.value})}
+                    />
                  </div>
+                 
+                 {/* Тип */}
                  <div className="bg-white p-3.5 flex justify-between items-center relative">
                     <span className="text-black text-[17px]">Тип</span>
                     <div className="flex items-center gap-1">
-                        <select className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4 z-10 relative" value={newTask.type} onChange={e => setNewTask({...newTask, type: e.target.value})}>
+                        <select 
+                           className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4 z-10 relative"
+                           value={newTask.type || 'reminder'}
+                           onChange={e => setNewTask({...newTask, type: e.target.value})}
+                        >
                            <option value="reminder">Нет</option>
                            <option value="email">Email</option>
                            <option value="whatsapp">WhatsApp</option>
@@ -403,10 +432,16 @@ const App = () => {
                         <ChevronRight size={16} className="text-gray-300 absolute right-0" />
                     </div>
                  </div>
+
+                 {/* Повтор */}
                  <div className="bg-white p-3.5 flex justify-between items-center relative">
                      <span className="text-black text-[17px]">Повтор</span>
                      <div className="flex items-center gap-1">
-                         <select className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4 z-10 relative" value={newTask.frequency} onChange={e => setNewTask({...newTask, frequency: e.target.value})}>
+                         <select 
+                             className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-4 z-10 relative"
+                             value={newTask.frequency || 'once'}
+                             onChange={e => setNewTask({...newTask, frequency: e.target.value})}
+                         >
                              <option value="once">Никогда</option>
                              <option value="daily">Ежедневно</option>
                              <option value="weekly">Еженедельно</option>
