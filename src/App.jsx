@@ -4,7 +4,7 @@ import WebApp from '@twa-dev/sdk';
 import { 
   Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
-  Flag, Camera, CheckCircle2, List, Inbox, CalendarClock, MoreHorizontal, CheckSquare, X, Check
+  Flag, Camera, CheckCircle2, List, Inbox, CalendarClock, MoreHorizontal, Check, X
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -78,14 +78,12 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
     e.stopPropagation();
     if (selectionMode) {
         onSelect(task.id);
-    } else {
-        // В обычном режиме клик по телу ничего не делает (или открывает детали, если решим)
     }
   };
 
   const handleCircleClick = (e) => {
     e.stopPropagation();
-    if (selectionMode) { onSelect(task.id); return; } // В режиме выбора клик везде выбирает
+    if (selectionMode) { onSelect(task.id); return; }
     
     if (viewMode === 'completed') { actions.uncomplete(task); return; }
     if (viewMode === 'trash') return;
@@ -108,17 +106,13 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
   return (
     <div ref={setNodeRef} style={style} onClick={handleMainClick} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
-      
-      {/* КРУЖОЧЕК ИЛИ ЧЕКБОКС ВЫБОРА */}
       {!isTrash ? (
         <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
-          {/* Иконка внутри кружка */}
           {selectionMode && isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
           {!selectionMode && (task.completed || isCompleting) && viewMode !== 'completed' && <div className={`w-2.5 h-2.5 bg-white rounded-full ${isCompleting ? '' : 'animate-in zoom-in'}`} />}
           {!selectionMode && viewMode === 'completed' && <CheckCircle2 size={16} className="text-white" />}
         </button>
       ) : (
-        // В корзине в режиме выбора - чекбокс, иначе - восстановить
         selectionMode ? (
              <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
                 {isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
@@ -128,7 +122,6 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
         )
       )}
 
-      {/* ТЕЛО ЗАДАЧИ */}
       <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center gap-2">
            <div className={`text-[17px] leading-tight break-words transition-colors ${task.completed || isCompleting ? 'text-gray-400' : 'text-black'}`}>{task.title}</div>
@@ -144,7 +137,6 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
         </div>
       </div>
       
-      {/* ТРИ ТОЧКИ (РЕДАКТИРОВАНИЕ) - Только не в режиме выбора */}
       {!selectionMode && (
           <button onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(task); }} className="text-gray-400 p-1 hover:bg-gray-100 rounded-full">
             <MoreHorizontal size={20} />
@@ -161,23 +153,16 @@ const App = () => {
   const [lists, setLists] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [userId, setUserId] = useState(null);
-  
-  // Selection Mode
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
-
-  // Modal States
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
-  const [editingId, setEditingId] = useState(null); // ID задачи, которую редактируем
-
-  // Form Data
+  const [editingId, setEditingId] = useState(null);
   const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 3 });
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
   const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
   const [timeVal, setTimeVal] = useState(new Date().toTimeString().slice(0, 5));
-
   const [newListTitle, setNewListTitle] = useState('');
   const sensors = useSensors(useSensor(PointerSensor), useSensor(TouchSensor, { activationConstraint: { tolerance: 5 } }));
   const [search, setSearch] = useState('');
@@ -213,7 +198,6 @@ const App = () => {
     const i = setInterval(fetchData, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
 
-  // Actions
   const actions = {
     saveTask: async () => {
       if (!newT.title) return alert('Название?');
@@ -221,18 +205,15 @@ const App = () => {
       if (hasDate) { finalDate = dateVal + (hasTime ? 'T' + timeVal : 'T09:00'); }
       
       if (editingId) {
-          // UPDATE EXISTING
           setTasks(prev => prev.map(t => t.id === editingId ? { ...t, ...newT, next_run: finalDate } : t));
           if (isOnline && !editingId.toString().startsWith('temp-')) {
               const { id, ...updates } = { ...newT, next_run: finalDate };
               await supabase.from('tasks').update(updates).eq('id', editingId);
           }
       } else {
-          // CREATE NEW
           const tempId = 'temp-' + Date.now();
           const currentListId = (view !== 'home' && view !== 'today' && view !== 'all' && view !== 'upcoming' && view !== 'flagged') ? view : null;
           const task = { ...newT, next_run: finalDate, telegram_user_id: userId, status: 'active', completed: false, is_deleted: false, position: tasks.length, id: tempId, list_id: currentListId };
-          
           setTasks(prev => [...prev, task]);
           if (isOnline) {
             const { id, ...dbTask } = task;
@@ -266,7 +247,7 @@ const App = () => {
       setTasks(prev => prev.map(t => t.id === id ? { ...t, is_deleted: false } : t));
       if (isOnline) await supabase.from('tasks').update({ is_deleted: false }).eq('id', id);
     },
-    delete: async (id) => { // Single delete
+    delete: async (id) => {
         if (view === 'trash') {
            if (!confirm('Удалить навсегда?')) return;
            setTasks(prev => prev.filter(t => t.id !== id));
@@ -289,7 +270,6 @@ const App = () => {
         });
       }
     },
-    // --- BULK ACTIONS ---
     toggleSelect: (id) => {
         const newSet = new Set(selectedIds);
         if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
@@ -299,37 +279,29 @@ const App = () => {
         const count = selectedIds.size;
         if (count === 0) return;
         if (!confirm(`Удалить выбранные (${count})?`)) return;
-
         const ids = Array.from(selectedIds);
         if (view === 'trash') {
-            // Delete permanently
             setTasks(prev => prev.filter(t => !selectedIds.has(t.id)));
             if (isOnline) await supabase.from('tasks').delete().in('id', ids);
         } else {
-            // Move to trash
             setTasks(prev => prev.map(t => selectedIds.has(t.id) ? { ...t, is_deleted: true } : t));
             if (isOnline) await supabase.from('tasks').update({ is_deleted: true }).in('id', ids);
         }
         setSelectionMode(false); setSelectedIds(new Set());
     },
-    bulkRestore: async () => { // For trash
+    bulkRestore: async () => {
         const ids = Array.from(selectedIds);
         setTasks(prev => prev.map(t => selectedIds.has(t.id) ? { ...t, is_deleted: false } : t));
         if (isOnline) await supabase.from('tasks').update({ is_deleted: false }).in('id', ids);
         setSelectionMode(false); setSelectedIds(new Set());
     },
     clearAll: async () => {
-        // Clear all in current view (Trash or Completed)
         if (!confirm(view === 'trash' ? 'Очистить корзину?' : 'Удалить все выполненные?')) return;
-        
-        // IDs to process
         const idsToProcess = filteredTasks.map(t => t.id);
-        
         if (view === 'trash') {
              setTasks(prev => prev.filter(t => !idsToProcess.includes(t.id)));
              if (isOnline) await supabase.from('tasks').delete().in('id', idsToProcess);
         } else {
-             // Move completed to trash
              setTasks(prev => prev.map(t => idsToProcess.includes(t.id) ? { ...t, is_deleted: true } : t));
              if (isOnline) await supabase.from('tasks').update({ is_deleted: true }).in('id', idsToProcess);
         }
@@ -338,38 +310,25 @@ const App = () => {
 
   const openEditModal = (task) => {
       setEditingId(task.id);
-      setNewT({ 
-          title: task.title, 
-          description: task.description, 
-          type: task.type || 'reminder', 
-          frequency: task.frequency || 'once', 
-          priority: task.priority || 3 
-      });
+      setNewT({ title: task.title, description: task.description, type: task.type || 'reminder', frequency: task.frequency || 'once', priority: task.priority || 3 });
       if (task.next_run) {
           const d = new Date(task.next_run);
           setHasDate(true);
           setDateVal(d.toISOString().slice(0, 10));
-          // Check if time is default or specific? For now assume always specific if present
-          setHasTime(task.next_run.includes('T') && !task.next_run.endsWith('T00:00:00')); 
+          setHasTime(task.next_run.includes('T') && !task.next_run.endsWith('T09:00')); 
           if (task.next_run.includes('T')) setTimeVal(d.toTimeString().slice(0, 5));
-      } else {
-          setHasDate(false); setHasTime(false);
-      }
+      } else { setHasDate(false); setHasTime(false); }
       setTaskModal(true);
   };
 
   const closeModal = () => {
-      setTaskModal(false);
-      setEditingId(null);
+      setTaskModal(false); setEditingId(null);
       setNewT({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 3 });
       setHasDate(false); setHasTime(false);
   };
 
-  // Filter Logic (Updated with Search)
   const filteredTasks = useMemo(() => {
     let res = tasks;
-    
-    // Search (Title OR Date)
     if (search) {
         const lower = search.toLowerCase();
         res = res.filter(t => {
@@ -377,23 +336,17 @@ const App = () => {
             return t.title.toLowerCase().includes(lower) || dateStr.includes(lower);
         });
     }
-
     if (view === 'trash') return res.filter(t => t.is_deleted);
-    
-    res = res.filter(t => !t.is_deleted); // Not deleted
-
+    res = res.filter(t => !t.is_deleted);
     if (view === 'completed') return res.filter(t => t.completed);
     res = res.filter(t => !t.completed);
 
     const today = new Date().setHours(0,0,0,0);
     const tomorrow = today + 86400000;
-
     if (view === 'today') return res.filter(t => t.next_run && new Date(t.next_run) >= today && new Date(t.next_run) < tomorrow);
     if (view === 'upcoming') return res.filter(t => t.next_run && new Date(t.next_run) >= tomorrow);
     if (view === 'flagged') return res.filter(t => t.priority === 5);
     if (view === 'all') return res;
-    
-    // Custom List
     return res.filter(t => t.list_id === view);
   }, [tasks, view, search]);
 
@@ -407,22 +360,15 @@ const App = () => {
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
       
-      {/* --- HOME SCREEN --- */}
+      {/* HOME */}
       {view === 'home' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
-          {/* Search */}
           <div className="relative bg-[#E3E3E8] rounded-xl flex items-center px-3 py-2">
             <Search className="text-gray-400" size={18} />
-            <input 
-                className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" 
-                placeholder="Поиск (задача, дата)" 
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-            />
+            <input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск (задача, дата)" value={search} onChange={e => setSearch(e.target.value)} />
             {search && <button onClick={() => setSearch('')}><X size={16} className="text-gray-400"/></button>}
           </div>
 
-          {/* Lists only if not searching (or filter lists too, but simple for now) */}
           {!search && (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -431,17 +377,12 @@ const App = () => {
                 <SmartListCard title="Все" count={counts.all} icon={Inbox} color="bg-gray-500" onClick={() => setView('all')} />
                 <SmartListCard title="С флажком" count={counts.flagged} icon={Flag} color="bg-orange-500" onClick={() => setView('flagged')} />
               </div>
-
               <div>
                  <h2 className="text-xl font-bold text-black mb-2 ml-1">Мои списки</h2>
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm">
                    {lists.map((l, i) => (
                      <div key={l.id} className={i !== lists.length - 1 ? 'border-b border-gray-100' : ''}>
-                        <UserListItem 
-                          list={l} 
-                          count={tasks.filter(t => t.list_id === l.id && !t.is_deleted && !t.completed).length} 
-                          onClick={() => setView(l.id)} 
-                        />
+                        <UserListItem list={l} count={tasks.filter(t => t.list_id === l.id && !t.is_deleted && !t.completed).length} onClick={() => setView(l.id)} />
                      </div>
                    ))}
                    <div className={lists.length > 0 ? 'border-t border-gray-100' : ''}>
@@ -459,14 +400,12 @@ const App = () => {
                    </div>
                  </div>
               </div>
-
               <div className="flex justify-end">
                  <button onClick={() => setListModal(true)} className="text-blue-600 font-medium text-lg p-2">Добавить список</button>
               </div>
             </>
           )}
           
-          {/* Search Results (Simple List) */}
           {search && (
               <div className="space-y-2">
                   {filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}
@@ -475,79 +414,44 @@ const App = () => {
         </div>
       )}
 
-      {/* --- LIST DETAIL SCREEN --- */}
+      {/* LIST DETAIL */}
       {view !== 'home' && (
         <div className="flex-1 flex flex-col h-full animate-in slide-in-from-right-8 duration-300 relative">
-          {/* Header */}
           <div className="px-4 pt-2 pb-2 bg-[#F2F2F7] sticky top-0 z-20 flex items-center justify-between">
              <div className="flex items-center gap-2">
-                 <button onClick={() => { setView('home'); setSelectionMode(false); }} className="flex items-center text-blue-600 font-medium text-[17px] -ml-2">
-                   <ChevronLeft size={24} /> Списки
-                 </button>
+                 <button onClick={() => { setView('home'); setSelectionMode(false); }} className="flex items-center text-blue-600 font-medium text-[17px] -ml-2"><ChevronLeft size={24} /> Списки</button>
              </div>
-             
-             {/* Select Button */}
              {filteredTasks.length > 0 && (
-                 <button onClick={() => { setSelectionMode(!selectionMode); setSelectedIds(new Set()); }} className="text-blue-600 font-medium text-[17px]">
-                    {selectionMode ? 'Готово' : 'Выбрать'}
-                 </button>
+                 <button onClick={() => { setSelectionMode(!selectionMode); setSelectedIds(new Set()); }} className="text-blue-600 font-medium text-[17px]">{selectionMode ? 'Готово' : 'Выбрать'}</button>
              )}
           </div>
-
-          {/* List Title & Clear All */}
           <div className="px-4 pb-4 flex justify-between items-end">
              <h1 className="text-3xl font-bold text-blue-600">
                {view === 'today' ? 'Сегодня' : view === 'upcoming' ? 'Запланировано' : view === 'all' ? 'Все' : view === 'flagged' ? 'С флажком' : view === 'trash' ? 'Корзина' : view === 'completed' ? 'Выполнено' : lists.find(l => l.id === view)?.title || 'Список'}
              </h1>
-             
-             {/* Clear All Button for Trash/Completed */}
              {(view === 'trash' || view === 'completed') && filteredTasks.length > 0 && !selectionMode && (
-                 <button onClick={actions.clearAll} className="text-red-500 text-sm font-medium bg-white/50 px-3 py-1 rounded-lg shadow-sm">
-                     Очистить
-                 </button>
+                 <button onClick={actions.clearAll} className="text-red-500 text-sm font-medium bg-white/50 px-3 py-1 rounded-lg shadow-sm">Очистить</button>
              )}
           </div>
-
-          {/* Tasks List */}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
             <div className="flex-1 px-4 pb-36 space-y-3 overflow-y-auto">
               <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
                 {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
-                  <TaskItem 
-                    key={t.id} 
-                    task={t} 
-                    actions={actions} 
-                    viewMode={view} 
-                    selectionMode={selectionMode}
-                    isSelected={selectedIds.has(t.id)}
-                    onSelect={actions.toggleSelect}
-                    onEdit={openEditModal}
-                  />
+                  <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
                 ))}
               </SortableContext>
             </div>
           </DndContext>
-
-          {/* Add Button (Normal Mode) */}
           {!selectionMode && view !== 'trash' && view !== 'completed' && (
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7] z-30">
-              <button onClick={() => setTaskModal(true)} className="w-full bg-blue-600 text-white font-bold text-lg py-3.5 rounded-xl shadow-lg active:scale-[0.98] flex items-center justify-center gap-2">
-                 <Plus size={24} strokeWidth={3} /> Новое напоминание
-              </button>
+              <button onClick={() => setTaskModal(true)} className="w-full bg-blue-600 text-white font-bold text-lg py-3.5 rounded-xl shadow-lg active:scale-[0.98] flex items-center justify-center gap-2"><Plus size={24} strokeWidth={3} /> Новое напоминание</button>
             </div>
           )}
-
-          {/* Bulk Actions Bar (Selection Mode) */}
           {selectionMode && (
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7] border-t border-gray-200 z-30 flex justify-between items-center">
                 <div className="text-gray-500 font-medium">Выбрано: {selectedIds.size}</div>
                 <div className="flex gap-4">
-                    {view === 'trash' ? (
-                        <button onClick={actions.bulkRestore} disabled={selectedIds.size === 0} className="text-blue-600 font-bold disabled:text-gray-400">Восстановить</button>
-                    ) : (
-                        // Maybe move/complete actions later
-                        <div/>
-                    )}
+                    {view === 'trash' ? <button onClick={actions.bulkRestore} disabled={selectedIds.size === 0} className="text-blue-600 font-bold disabled:text-gray-400">Восстановить</button> : <div/>}
                     <button onClick={actions.bulkDelete} disabled={selectedIds.size === 0} className="text-red-500 font-bold disabled:text-gray-300">Удалить</button>
                 </div>
             </div>
@@ -555,7 +459,7 @@ const App = () => {
         </div>
       )}
 
-      {/* --- TASK MODAL --- */}
+      {/* TASK MODAL */}
       {taskModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
            <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[90vh] flex flex-col shadow-2xl animate-slide-up">
@@ -613,14 +517,12 @@ const App = () => {
         </div>
       )}
 
-      {/* NEW LIST MODAL */}
+      {/* LIST MODAL */}
       {listModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-in zoom-in-95">
               <h3 className="text-lg font-bold text-center mb-4">Новый список</h3>
-              <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center">
-                  <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><List size={32} className="text-white" /></div>
-              </div>
+              <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><List size={32} className="text-white" /></div></div>
               <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
               <div className="flex gap-2">
                   <button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button>
