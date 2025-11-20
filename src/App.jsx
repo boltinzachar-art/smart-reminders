@@ -7,7 +7,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// --- КОМПОНЕНТ ОДНОЙ ПЛИТКИ (ЧТОБЫ МОЖНО БЫЛО ТАСКАТЬ) ---
+// --- КОМПОНЕНТ ОДНОЙ ПЛИТКИ ---
 const SortableTaskItem = ({ task, completeTask, deleteTask, performAction, formatTime, isOverdue }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   
@@ -20,7 +20,7 @@ const SortableTaskItem = ({ task, completeTask, deleteTask, performAction, forma
 
   return (
     <div ref={setNodeRef} style={style} className="group w-full max-w-full bg-white rounded-xl p-3 shadow-[0_1px_2px_rgba(0,0,0,0.05)] flex items-start gap-3 touch-manipulation">
-       {/* Ручка для перетаскивания (только за нее можно тащить) */}
+       {/* Ручка для перетаскивания (С УЛУЧШЕННОЙ ЗОНОЙ НАЖАТИЯ) */}
        <div {...attributes} {...listeners} className="mt-1 p-2 -ml-2 text-gray-300 touch-none cursor-grab active:cursor-grabbing">
          <GripVertical size={20} />
        </div>
@@ -46,7 +46,7 @@ const SortableTaskItem = ({ task, completeTask, deleteTask, performAction, forma
 };
 
 const App = () => {
-  // Загружаем сразу из LocalStorage (чтобы работало без сети)
+  // Загружаем сразу из LocalStorage
   const [tasks, setTasks] = useState(() => {
     const saved = localStorage.getItem('tasks');
     return saved ? JSON.parse(saved) : [];
@@ -60,16 +60,15 @@ const App = () => {
 
   const [newTask, setNewTask] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
 
-  // Сенсоры для Drag&Drop (чтобы хорошо работало на тачскрине)
+  // Сенсоры (ОСТАВИЛИ ЗАДЕРЖКУ 250МС ДЛЯ СТАБИЛЬНОСТИ)
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }), // Задержка, чтобы случайно не начать тащить при скролле
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }), 
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   // 1. Инициализация
   useEffect(() => {
-    // Слушаем сеть
     window.addEventListener('online', () => setIsOnline(true));
     window.addEventListener('offline', () => setIsOnline(false));
 
@@ -79,8 +78,10 @@ const App = () => {
       WebApp.enableClosingConfirmation();
       WebApp.setHeaderColor('#F2F2F7'); 
       WebApp.setBackgroundColor('#F2F2F7');
-      WebApp.disableVerticalSwipes();
-      WebApp.isVerticalSwipesEnabled = false; 
+      // Попытка отключить свайпы (может не работать на старых версиях)
+      if (WebApp.isVersionAtLeast('8.0')) {
+        WebApp.disableVerticalSwipes();
+      }
     } else {
       setUserId(777);
     }
@@ -91,47 +92,36 @@ const App = () => {
     };
   }, []);
 
-  // 2. Сохранение в LocalStorage при любом изменении
+  // 2. Сохранение
   useEffect(() => {
     localStorage.setItem('tasks', JSON.stringify(tasks));
   }, [tasks]);
 
-  // 3. Синхронизация с сервером
+  // 3. Синхронизация
   useEffect(() => {
     if (userId && isOnline) {
       syncTasks();
-      const interval = setInterval(syncTasks, 30000); // Каждые 30 сек
+      const interval = setInterval(syncTasks, 30000);
       return () => clearInterval(interval);
     }
   }, [userId, isOnline]);
 
   const syncTasks = async () => {
     try {
-      // Простая стратегия: Сервер главный. Скачиваем и обновляем локально.
-      // (Для полноценного оффлайн-синка нужна более сложная логика очередей, но для MVP так)
       let query = supabase
         .from('tasks')
         .select('*')
         .eq('telegram_user_id', userId)
         .eq('completed', false)
-        .order('position', { ascending: true }) // Сортируем по позиции
+        .order('position', { ascending: true })
         .order('next_run', { ascending: true });
 
       const { data, error } = await query;
       if (error) throw error;
       
-      // Если пришли данные, обновляем (но аккуратно, чтобы не сбить текущее редактирование)
-      // В MVP просто заменяем
       if (data) {
-        // Если локально есть задачи с ID 'temp-', значит они еще не ушли на сервер
-        // Их надо оставить или отправить. Пока просто берем серверные.
-        // Сливаем: берем серверные + локальные временные
         const localTempTasks = tasks.filter(t => t.id.toString().startsWith('temp-'));
-        
-        // Чтобы не было дублей, если временная задача уже успела улететь
         const combined = [...data, ...localTempTasks]; 
-        
-        // Важно: не перезаписывать, если мы прямо сейчас что-то тащим (можно добавить флаг)
         setTasks(combined);
         localStorage.setItem('tasks', JSON.stringify(combined));
       }
@@ -140,7 +130,7 @@ const App = () => {
     }
   };
 
-  // === DRAG & DROP ОБРАБОТЧИК ===
+  // === DRAG & DROP ===
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     if (active.id !== over.id) {
@@ -149,25 +139,19 @@ const App = () => {
         const newIndex = items.findIndex(t => t.id === over.id);
         const newOrder = arrayMove(items, oldIndex, newIndex);
         
-        // Обновляем позиции в базе (фоном)
-        if (isOnline) {
-            updatePositions(newOrder);
-        }
+        if (isOnline) updatePositions(newOrder);
         return newOrder;
       });
     }
   };
 
   const updatePositions = async (orderedTasks) => {
-    // Отправляем на сервер новые индексы
-    // Это не очень эффективно для больших списков, но для личных задач ОК
     const updates = orderedTasks.map((t, index) => ({
         id: t.id,
         position: index,
-        // Обязательные поля для апдейта (supbase требует)
         title: t.title, 
         telegram_user_id: userId 
-    })).filter(t => !t.id.toString().startsWith('temp-')); // Не шлем временные
+    })).filter(t => !t.id.toString().startsWith('temp-'));
 
     if (updates.length > 0) {
         await supabase.from('tasks').upsert(updates);
@@ -190,22 +174,19 @@ const App = () => {
       status: 'active',
       completed: false,
       action_template: template,
-      position: tasks.length, // В конец списка
+      position: tasks.length,
       id: 'temp-' + Date.now() 
     };
 
-    // 1. Сохраняем локально (Мгновенно)
     setTasks(prev => [...prev, optimisticTask]);
     setShowAddModal(false);
     setNewTask({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
 
-    // 2. Если есть сеть, пробуем отправить
     if (isOnline) {
         const { id, ...taskForDb } = optimisticTask;
         try {
             const { data } = await supabase.from('tasks').insert([taskForDb]).select();
             if (data) {
-                // Заменяем временный ID на реальный
                 setTasks(prev => prev.map(t => t.id === optimisticTask.id ? data[0] : t));
             }
         } catch (e) {
@@ -226,7 +207,6 @@ const App = () => {
             }
             return t;
         });
-        // Если одноразовая - фильтруем через паузу
         return updated;
     });
 
