@@ -3,8 +3,8 @@ import { supabase } from './supabaseClient';
 import WebApp from '@twa-dev/sdk';
 import { 
   Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
-  CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, 
-  Flag, CheckCircle2, List, Inbox, CalendarClock, MoreHorizontal, Check, X, ArrowUp
+  CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
+  Flag, Camera, CheckCircle2, List, Inbox, CalendarClock, MoreHorizontal, Check, X
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -51,7 +51,7 @@ const performAction = (e, task) => {
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
-// --- COMPONENTS ---
+// --- SUB-COMPONENTS ---
 const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
   <button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform">
     <div className="flex justify-between w-full">
@@ -105,11 +105,9 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
   return (
     <div ref={setNodeRef} style={style} onClick={(e) => selectionMode && onSelect(task.id)} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
-      
       {!isTrash && viewMode !== 'completed' && !selectionMode && (
         <div {...attributes} {...listeners} style={{ touchAction: 'none' }} className="mt-1 p-2 -ml-2 text-gray-300 cursor-grab active:cursor-grabbing touch-none"><GripVertical size={20} /></div>
       )}
-
       {!isTrash ? (
         <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
           {selectionMode && isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
@@ -118,14 +116,11 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
         </button>
       ) : (
         selectionMode ? (
-             <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
-                {isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
-             </button>
+             <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>{isSelected && <Check size={14} className="text-white" strokeWidth={3} />}</button>
         ) : (
              <button onClick={() => actions.restore(task.id)} className="mt-0.5 text-blue-600 p-1"><RotateCcw size={20} /></button>
         )
       )}
-
       <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center gap-1">
            {priorityMarks && <span className="text-blue-600 font-bold text-[17px] mr-1">{priorityMarks}</span>}
@@ -141,11 +136,8 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
           )}
         </div>
       </div>
-      
       {!selectionMode && (
-          <button onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(task); }} className="text-gray-400 p-1 hover:bg-gray-100 rounded-full">
-            <MoreHorizontal size={20} />
-          </button>
+          <button onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(task); }} className="text-gray-400 p-1 hover:bg-gray-100 rounded-full"><MoreHorizontal size={20} /></button>
       )}
     </div>
   );
@@ -153,51 +145,29 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
 // --- SPECIAL VIEW: SCHEDULED (SECTIONS) ---
 const ScheduledView = ({ tasks, actions, onEdit }) => {
-  // Генерируем секции
   const sections = useMemo(() => {
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    
+    const today = new Date(); today.setHours(0,0,0,0);
     const result = [];
-    
-    // 1. Просроченные
     const overdue = tasks.filter(t => t.next_run && new Date(t.next_run) < today);
     if (overdue.length > 0) result.push({ title: 'Просрочено', data: overdue, isOverdue: true });
 
-    // 2. Следующие 15 дней (По дням)
     for (let i = 0; i <= 14; i++) {
-        const d = new Date(today);
-        d.setDate(today.getDate() + i);
-        const dayStart = d.getTime();
-        const dayEnd = dayStart + 86400000;
-        
+        const d = new Date(today); d.setDate(today.getDate() + i);
+        const dayStart = d.getTime(); const dayEnd = dayStart + 86400000;
         const dayTasks = tasks.filter(t => {
             if (!t.next_run) return false;
             const tTime = new Date(t.next_run).getTime();
             return tTime >= dayStart && tTime < dayEnd;
         });
-
-        // Форматируем заголовок
         let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
-        if (i === 0) title = 'Сегодня';
-        if (i === 1) title = 'Завтра';
-
-        result.push({ 
-            title: title, 
-            data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), // Сортировка по времени
-            isCompact: dayTasks.length === 0 // Пустые секции сжаты
-        });
+        if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
+        result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
     }
-
-    // 3. Будущие месяцы (упрощенно - следующие 3 месяца одной кучей или помесячно, сделаем "Позже")
-    const futureStart = new Date(today);
-    futureStart.setDate(today.getDate() + 15);
-    
+    const futureStart = new Date(today); futureStart.setDate(today.getDate() + 15);
     const futureTasks = tasks.filter(t => t.next_run && new Date(t.next_run) >= futureStart);
     if (futureTasks.length > 0) {
         result.push({ title: 'Позже', data: futureTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)) });
     }
-
     return result;
   }, [tasks]);
 
@@ -205,27 +175,17 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
     <div className="pb-40">
         {sections.map((section, idx) => (
             <div key={idx} className={`mb-2 ${section.isCompact ? 'opacity-50' : ''}`}>
-                {/* Заголовок секции */}
                 <div className={`px-4 py-2 font-bold text-lg flex justify-between ${section.isOverdue ? 'text-red-500' : 'text-black'} ${section.isCompact ? 'text-sm py-1' : ''}`}>
                     <span>{section.title}</span>
-                    {section.isCompact && <span className="text-gray-300 text-xs">Нет задач</span>}
                 </div>
-
-                {/* Задачи в секции */}
-                {!section.isCompact && (
-                    <div className="px-4 space-y-2">
-                        {section.data.map(task => (
-                            <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} />
-                        ))}
-                    </div>
-                )}
+                {!section.isCompact && <div className="px-4 space-y-2">{section.data.map(task => <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}
             </div>
         ))}
     </div>
   );
 };
 
-// --- APP ---
+// --- MAIN APP COMPONENT ---
 const App = () => {
   const [view, setView] = useState('home');
   const [tasks, setTasks] = useState(() => JSON.parse(localStorage.getItem('tasks') || '[]'));
@@ -415,7 +375,7 @@ const App = () => {
     let res = tasks;
     if (search) {
         const lower = search.toLowerCase();
-        res = res.filter(t => t.title.toLowerCase().includes(lower) || (t.next_run && formatTime(t.next_run).includes(lower)));
+        res = res.filter(t => t.title.toLowerCase().includes(lower) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(lower)));
     }
     if (view === 'trash') return res.filter(t => t.is_deleted);
     res = res.filter(t => !t.is_deleted);
@@ -441,13 +401,11 @@ const App = () => {
 
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
-      
-      {/* --- HOME --- */}
       {view === 'home' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
           <div className="relative bg-[#E3E3E8] rounded-xl flex items-center px-3 py-2">
             <Search className="text-gray-400" size={18} />
-            <input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск" value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск (задача, дата)" value={search} onChange={e => setSearch(e.target.value)} />
             {search && <button onClick={() => setSearch('')}><X size={16} className="text-gray-400"/></button>}
           </div>
 
@@ -492,7 +450,6 @@ const App = () => {
         </div>
       )}
 
-      {/* --- LIST DETAIL --- */}
       {view !== 'home' && (
         <div className="flex-1 flex flex-col h-full animate-in slide-in-from-right-8 duration-300 relative">
           <div className="px-4 pt-2 pb-2 bg-[#F2F2F7] sticky top-0 z-20 flex items-center justify-between">
@@ -513,7 +470,6 @@ const App = () => {
              )}
           </div>
 
-          {/* --- SCHEDULED VIEW (SECTIONS) OR NORMAL LIST --- */}
           <div className="flex-1 px-4 pb-36 overflow-y-auto space-y-3">
              {view === 'upcoming' && !selectionMode ? (
                  <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal} />
@@ -545,7 +501,6 @@ const App = () => {
         </div>
       )}
 
-      {/* TASK MODAL */}
       {taskModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
            <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[90vh] flex flex-col shadow-2xl animate-slide-up">
@@ -613,48 +568,6 @@ const App = () => {
            </div>
         </div>
       )}
-    </div>
-  );
-};
-
-// --- SEPARATE COMPONENT FOR SCHEDULED VIEW ---
-const ScheduledView = ({ tasks, actions, onEdit }) => {
-  const sections = useMemo(() => {
-    const today = new Date(); today.setHours(0,0,0,0);
-    const result = [];
-    const overdue = tasks.filter(t => t.next_run && new Date(t.next_run) < today);
-    if (overdue.length > 0) result.push({ title: 'Просрочено', data: overdue, isOverdue: true });
-
-    for (let i = 0; i <= 14; i++) {
-        const d = new Date(today); d.setDate(today.getDate() + i);
-        const dayStart = d.getTime(); const dayEnd = dayStart + 86400000;
-        const dayTasks = tasks.filter(t => {
-            if (!t.next_run) return false;
-            const tTime = new Date(t.next_run).getTime();
-            return tTime >= dayStart && tTime < dayEnd;
-        });
-        let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
-        if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
-        result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
-    }
-    const futureStart = new Date(today); futureStart.setDate(today.getDate() + 15);
-    const futureTasks = tasks.filter(t => t.next_run && new Date(t.next_run) >= futureStart);
-    if (futureTasks.length > 0) {
-        result.push({ title: 'Позже', data: futureTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)) });
-    }
-    return result;
-  }, [tasks]);
-
-  return (
-    <div className="pb-40">
-        {sections.map((section, idx) => (
-            <div key={idx} className={`mb-2 ${section.isCompact ? 'opacity-50' : ''}`}>
-                <div className={`px-4 py-2 font-bold text-lg flex justify-between ${section.isOverdue ? 'text-red-500' : 'text-black'} ${section.isCompact ? 'text-sm py-1' : ''}`}>
-                    <span>{section.title}</span>
-                </div>
-                {!section.isCompact && <div className="px-4 space-y-2">{section.data.map(task => <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}
-            </div>
-        ))}
     </div>
   );
 };
