@@ -6,14 +6,13 @@ import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerS
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ЧИСТАЯ ЛОГИКА) ---
+// --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 const calculateNextRun = (current, freq) => {
   if (!current) return null;
   const d = new Date(current);
   if (freq === 'daily') d.setDate(d.getDate() + 1);
   if (freq === 'weekly') d.setDate(d.getDate() + 7);
   if (freq === 'monthly') d.setMonth(d.getMonth() + 1);
-  // Хак для сохранения локального времени без сдвига UTC
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
 
@@ -48,13 +47,29 @@ const TaskItem = ({ task, actions, isTrash }) => {
     setTimeout(() => { actions.complete(task); setTimeout(() => setFlashing(false), 100); }, 600);
   };
 
-  const style = { transform: CSS.Transform.toString(transform), transition: isDragging ? 'none' : 'all 0.3s ease', zIndex: isDragging ? 50 : 'auto', opacity: isDragging ? 0.8 : 1 };
+  const style = { 
+    transform: CSS.Transform.toString(transform), 
+    transition: isDragging ? 'none' : 'all 0.3s ease', 
+    zIndex: isDragging ? 50 : 'auto', 
+    opacity: isDragging ? 0.8 : 1 
+  };
+  
   const isOverdue = task.next_run && new Date(task.next_run) < new Date() && !task.completed;
 
   return (
     <div ref={setNodeRef} style={style} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-2 transition-all ${flashing ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
+      
       {!isTrash && (
-        <div {...attributes} {...listeners} className="mt-1 p-1 text-gray-300 cursor-grab active:cursor-grabbing touch-none"><GripVertical size={20} /></div>
+        // ФИКС 1: Добавлен стиль touchAction: 'none' прямо в div
+        // Это говорит браузеру: "Здесь нет скролла, здесь только логика JS"
+        <div 
+          {...attributes} 
+          {...listeners} 
+          style={{ touchAction: 'none' }} 
+          className="mt-1 p-2 -ml-2 text-gray-300 cursor-grab active:cursor-grabbing touch-none"
+        >
+            <GripVertical size={20} />
+        </div>
       )}
 
       {!isTrash ? (
@@ -85,7 +100,6 @@ const TaskItem = ({ task, actions, isTrash }) => {
 
 // --- MAIN APP ---
 const App = () => {
-  // State
   const [tasks, setTasks] = useState(() => JSON.parse(localStorage.getItem('tasks') || '[]'));
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [userId, setUserId] = useState(null);
@@ -94,20 +108,36 @@ const App = () => {
   const [search, setSearch] = useState('');
   const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', next_run: '', priority: 3 });
 
-  // Sensors for Drag&Drop
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(TouchSensor, { activationConstraint: { tolerance: 5 } }));
+  const sensors = useSensors(
+      useSensor(PointerSensor), 
+      useSensor(TouchSensor, { 
+          // ФИКС 2: Небольшой толеранс, чтобы различать тап и драг
+          activationConstraint: { tolerance: 5 } 
+      })
+  );
 
-  // Init
   useEffect(() => {
     const handleStatus = () => setIsOnline(navigator.onLine);
     window.addEventListener('online', handleStatus); window.addEventListener('offline', handleStatus);
     
     if (WebApp.initDataUnsafe.user) {
       setUserId(WebApp.initDataUnsafe.user.id);
-      WebApp.expand(); WebApp.enableClosingConfirmation();
-      WebApp.setHeaderColor('#F2F2F7'); WebApp.setBackgroundColor('#F2F2F7');
+      WebApp.expand(); 
+      
+      // ФИКС 3: Официально просим Телеграм отключить свайпы
+      // (Работает в версиях бота 7.7+)
+      try {
+        WebApp.disableVerticalSwipes();
+      } catch (e) {
+        console.log('Old telegram version, swipes not disabled via API');
+      }
+      
+      // Для старых версий:
+      WebApp.enableClosingConfirmation(); 
+      WebApp.setHeaderColor('#F2F2F7'); 
+      WebApp.setBackgroundColor('#F2F2F7');
     } else {
-      setUserId(777); // Dev mode
+      setUserId(777);
     }
     return () => { window.removeEventListener('online', handleStatus); window.removeEventListener('offline', handleStatus); };
   }, []);
@@ -120,9 +150,13 @@ const App = () => {
     const sync = async () => {
       const { data } = await supabase.from('tasks').select('*').eq('telegram_user_id', userId).order('position');
       if (data) {
-        // Merge server data with local temp tasks
         const localTemp = tasks.filter(t => t.id.toString().startsWith('temp-'));
-        setTasks([...data, ...localTemp]);
+        // Простая стратегия слияния: серверные данные + локальные временные
+        // Можно улучшить, но для MVP достаточно
+        const mergedMap = new Map();
+        data.forEach(t => mergedMap.set(t.id, t));
+        localTemp.forEach(t => mergedMap.set(t.id, t));
+        setTasks(Array.from(mergedMap.values()).sort((a,b) => a.position - b.position));
       }
     };
     sync();
@@ -130,7 +164,6 @@ const App = () => {
     return () => clearInterval(interval);
   }, [userId, isOnline]);
 
-  // Actions Controller
   const actions = {
     create: async () => {
       if (!newT.title) return alert('Название?');
@@ -189,7 +222,6 @@ const App = () => {
     }
   };
 
-  // Filtering
   const filteredTasks = useMemo(() => {
     let res = tasks.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
     if (filter === 'trash') return res.filter(t => t.is_deleted);
@@ -201,14 +233,13 @@ const App = () => {
     if (filter === 'today') res = res.filter(t => !t.completed && t.next_run && new Date(t.next_run) >= today && new Date(t.next_run) < tomorrow);
     else if (filter === 'upcoming') res = res.filter(t => !t.completed && t.next_run && new Date(t.next_run) >= tomorrow);
     else if (filter === 'completed') res = res.filter(t => t.completed);
-    else res = res.filter(t => !t.completed); // 'all'
+    else res = res.filter(t => !t.completed); 
     
     return res;
   }, [tasks, filter, search]);
 
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col">
-      {/* HEADER */}
       <div className="px-4 pt-14 pb-2 bg-[#F2F2F7] sticky top-0 z-20">
         <div className="flex justify-between items-center mb-3">
            <h1 className="text-3xl font-bold ml-1">{filter === 'trash' ? 'Корзина' : filter === 'completed' ? 'Готовые' : 'Напоминания'}</h1>
@@ -225,7 +256,6 @@ const App = () => {
         </div>
       </div>
 
-      {/* LIST */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
         <div className="flex-1 px-4 pb-32 space-y-3">
           <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
@@ -236,12 +266,10 @@ const App = () => {
         </div>
       </DndContext>
 
-      {/* BOTTOM BAR */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7]/90 backdrop-blur border-t z-30">
          <button onClick={() => setModal(true)} className="flex items-center gap-2 text-blue-600 font-bold text-lg active:opacity-70"><Plus size={22} strokeWidth={3} /> Новое</button>
       </div>
 
-      {/* MODAL */}
       {modal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
            <div className="bg-gray-100 w-full sm:max-w-md rounded-t-2xl p-4 max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up">
