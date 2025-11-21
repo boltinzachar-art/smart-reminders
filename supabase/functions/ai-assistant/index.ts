@@ -16,7 +16,7 @@ serve(async (req) => {
     const { taskTitle, taskDescription, type } = await req.json()
     
     // 3. Берем ключ (убедись, что ты его добавил в секреты!)
-    const apiKey = Deno.env.get('AIzaSyDPout-FZl5yGzAmNplzCJ7VxHX1XIvQbs')
+    const apiKey = Deno.env.get('GOOGLE_API_KEY')
     if (!apiKey) {
       throw new Error('Не найден ключ GOOGLE_API_KEY в секретах Supabase')
     }
