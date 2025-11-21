@@ -2,12 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+<<<<<<< HEAD
 /* ГЛОБАЛЬНЫЕ ФИКСЫ */
+=======
+>>>>>>> 2e191e500a17d68fb1061fd618f9dfb42f2c7891
 html, body, #root {
   height: 100%;
   width: 100%;
   margin: 0;
   padding: 0;
+<<<<<<< HEAD
   background-color: #F2F2F7; /* Цвет фона iOS */
   
   /* Блокируем пружинистый скролл всего окна */
@@ -24,10 +28,22 @@ html, body, #root {
 /* АНИМАЦИИ */
 
 /* 1. Мигание кружочка (3 раза) */
+=======
+  background-color: #F2F2F7;
+  overflow: hidden; /* Блокируем скролл тела */
+  overscroll-behavior: none;
+  touch-action: pan-x pan-y;
+  -webkit-user-select: none; /* Защита от выделения текста при свайпах */
+  user-select: none;
+}
+
+/* Анимации */
+>>>>>>> 2e191e500a17d68fb1061fd618f9dfb42f2c7891
 @keyframes blink-3 {
   0%, 100% { background-color: transparent; border-color: #D1D5DB; }
   50% { background-color: #3B82F6; border-color: #3B82F6; }
 }
+<<<<<<< HEAD
 .animate-blink-3 {
   animation: blink-3 0.5s ease-in-out 3;
 }
@@ -59,3 +75,13 @@ html, body, #root {
 /* Скрываем скроллбар */
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+=======
+.animate-blink-3 { animation: blink-3 0.5s ease-in-out 3; }
+
+.animate-slide-up { animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+/* Кастомный скроллбар (скрытый) */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+>>>>>>> 2e191e500a17d68fb1061fd618f9dfb42f2c7891
