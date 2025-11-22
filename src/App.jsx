@@ -67,9 +67,9 @@ const formatTime = (dateStr) => {
 
 const performAction = (e, task, showToast) => {
   e.stopPropagation();
-  const body = encodeURIComponent(task.description || ''); // ТОЛЬКО ОПИСАНИЕ
-  const title = encodeURIComponent(task.title); // Заголовок только для темы
-
+  const title = encodeURIComponent(task.title);
+  const body = encodeURIComponent(task.description || '');
+  
   if (task.type === 'copy') {
       navigator.clipboard.writeText(task.description || task.title);
       if (showToast) showToast("Скопировано");
@@ -86,7 +86,6 @@ const performAction = (e, task, showToast) => {
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
-// Иконки действий
 const ACTION_ICONS = {
     email: <Mail size={14} />,
     whatsapp: <MessageCircle size={14} />,
@@ -119,10 +118,12 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
   const style = { transform: CSS.Transform.toString(transform), transition: isDragging ? 'none' : 'all 0.3s ease', zIndex: isDragging ? 50 : 'auto', opacity: isDragging ? 0.8 : 1 };
   const isOverdue = task.next_run && new Date(task.next_run) < new Date() && !task.completed;
-  const circleClass = `mt-0.5 shrink-0 w-[24px] h-[24px] rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
-      selectionMode ? (isSelected ? "bg-blue-500 border-blue-500" : "border-gray-300 bg-transparent") 
-      : (isCompleting ? "animate-blink-3 border-gray-300" : task.completed ? "bg-blue-500 border-blue-500" : "border-gray-300 hover:border-blue-500 bg-transparent")
-  }`;
+  
+  let circleClass = "mt-0.5 shrink-0 w-[24px] h-[24px] rounded-full border-2 flex items-center justify-center transition-all duration-300 ";
+  if (selectionMode) circleClass += isSelected ? "bg-blue-500 border-blue-500" : "border-gray-300 bg-transparent";
+  else if (isCompleting) circleClass += "animate-blink-3 border-gray-300";
+  else if (task.completed) circleClass += "bg-blue-500 border-blue-500";
+  else circleClass += "border-gray-300 hover:border-blue-500 bg-transparent";
 
   return (
     <div ref={setNodeRef} style={style} onClick={(e) => selectionMode && onSelect(task.id)} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
@@ -147,19 +148,16 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
         </div>
         {task.description && <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>}
         
-        {/* МЕТА-ДАННЫЕ И ДЕЙСТВИЯ */}
         <div className="flex items-center flex-wrap gap-2 mt-2">
           {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run)}</span>}
           {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium"><RefreshCw size={10} /> {task.frequency}</span>}
           
-          {/* ССЫЛКА (URL) */}
           {task.url && (
               <a href={task.url.startsWith('http') ? task.url : `https://${task.url}`} target="_blank" rel="noreferrer" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition">
                   <LinkIcon size={12}/> Ссылка
               </a>
           )}
 
-          {/* ДЕЙСТВИЕ (ACTION) */}
           {task.type !== 'reminder' && ACTION_ICONS[task.type] && (
             <button onPointerDown={e => e.stopPropagation()} onClick={(e) => performAction(e, task, toast)} className="text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded flex items-center gap-1 hover:bg-gray-200 transition">
                 {ACTION_ICONS[task.type]} {task.type === 'whatsapp' ? 'WhatsApp' : task.type === 'copy' ? 'Копия' : 'Действие'}
@@ -174,29 +172,65 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
-// ... ScheduledView, SmartListCard, UserListItem (SAME AS BEFORE) ...
+// --- SCHEDULED VIEW (ИСПРАВЛЕНО!) ---
 const ScheduledView = ({ tasks, actions, onEdit }) => {
     const sections = useMemo(() => {
       const today = new Date(); today.setHours(0,0,0,0);
       const result = [];
-      const overdue = tasks.filter(t => t.next_run && new Date(t.next_run) < today);
+      
+      // Просроченные
+      const overdue = tasks.filter(t => t.next_run && new Date(t.next_run) < today && !t.completed && !t.is_deleted);
       if (overdue.length > 0) result.push({ title: 'Просрочено', data: overdue, isOverdue: true });
+      
+      // Следующие 15 дней
       for (let i = 0; i <= 14; i++) {
           const d = new Date(today); d.setDate(today.getDate() + i);
-          const s = d.getTime(), e = s + 86400000;
-          const dt = filteredTasks(tasks, d); // Reuse logic or simply filter here
-          const dayTasks = tasks.filter(t => { if(!t.next_run)return false; const tm=new Date(t.next_run).getTime(); return tm>=s && tm<e; });
+          const dayStart = d.getTime(); 
+          const dayEnd = dayStart + 86400000;
+          
+          const dayTasks = tasks.filter(t => {
+             if (!t.next_run || t.completed || t.is_deleted) return false;
+             const tTime = new Date(t.next_run).getTime();
+             return tTime >= dayStart && tTime < dayEnd;
+          });
+          
           let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
-          if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
-          result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
+          if (i === 0) title = 'Сегодня'; 
+          if (i === 1) title = 'Завтра';
+          
+          result.push({ 
+              title: title, 
+              data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), 
+              isCompact: dayTasks.length === 0 
+          });
       }
+      
+      // Позже
+      const futureStart = new Date(today); futureStart.setDate(today.getDate() + 15);
+      const futureTasks = tasks.filter(t => t.next_run && new Date(t.next_run) >= futureStart && !t.completed && !t.is_deleted);
+      if (futureTasks.length > 0) {
+          result.push({ title: 'Позже', data: futureTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)) });
+      }
+      
       return result;
-    }, [tasks]);
-    return (<div className="pb-40">{sections.map((s, i) => (<div key={i} className={`mb-2 ${s.isCompact?'opacity-50':''}`}><div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.isCompact?'text-sm py-1':''}`}><span>{s.title}</span></div>{!s.isCompact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}</div>))}</div>);
+    }, [tasks]); // Убрана зависимость view/filteredTasks, так как tasks уже переданы фильтрованными
+
+    return (
+        <div className="pb-40">
+            {sections.map((s, i) => (
+                <div key={i} className={`mb-2 ${s.isCompact?'opacity-50':''}`}>
+                    <div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.isCompact?'text-sm py-1':''}`}>
+                        <span>{s.title}</span>
+                    </div>
+                    {!s.isCompact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}
+                </div>
+            ))}
+        </div>
+    );
 };
+
 const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (<button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform"><div className="flex justify-between w-full"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}><Icon size={18} className="text-white" /></div><span className="text-2xl font-bold text-black">{count || 0}</span></div><span className="text-gray-500 font-medium text-[15px] self-start">{title}</span></button>);
 const UserListItem = ({ list, count, onClick }) => (<div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer"><div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div><span className="flex-1 text-[17px] font-medium text-black">{list.title}</span><span className="text-gray-400 text-[15px]">{count || 0}</span><ChevronRight size={16} className="text-gray-300" /></div>);
-
 
 // --- 3. MAIN LOGIC ---
 
@@ -216,6 +250,7 @@ const MainApp = () => {
   const [listModal, setListModal] = useState(false);
   const [templateManager, setTemplateManager] = useState(false);
   const [templatesPicker, setTemplatesPicker] = useState(false);
+  const [actionPicker, setActionPicker] = useState(false);
   
   const [editingId, setEditingId] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
@@ -292,7 +327,6 @@ const MainApp = () => {
       }
       closeModal();
     },
-    // ... other actions (same) ...
     saveTemplate: async () => {
         if (!newT.title) return toast("Введите название", "error");
         const template = { title: newT.title, description: newT.description, type: newT.type, telegram_user_id: userId, url: newT.url };
@@ -315,7 +349,7 @@ const MainApp = () => {
     restore: async (id) => { setTasks(p=>p.map(t=>t.id===id?{...t,is_deleted:false}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:false}).eq('id',id); toast("Восстановлено"); },
     delete: async (id) => { if(view==='trash'){if(!confirm("Удалить навсегда?"))return; setTasks(p=>p.filter(t=>t.id!==id)); if(isOnline)await supabase.from('tasks').delete().eq('id',id);}else{setTasks(p=>p.map(t=>t.id===id?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).eq('id',id); toast("В корзине");} },
     reorder: (e) => { const {active,over}=e; if(active.id!==over.id){setTasks(items=>{const n=arrayMove(items,items.findIndex(t=>t.id===active.id),items.findIndex(t=>t.id===over.id)); if(isOnline){const u=n.map((t,i)=>({id:t.id,position:i,title:t.title,telegram_user_id:userId})).filter(t=>!t.id.toString().startsWith('temp-')); supabase.from('tasks').upsert(u).then();} return n;});} },
-    bulkAction: async (type) => { if(!selectedIds.size)return; const ids=Array.from(selectedIds); if(type==='delete'){if(!confirm("Удалить?"))return; if(view==='trash'){setTasks(p=>p.filter(t=>!selectedIds.has(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);}}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:false}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:false}).in('id',ids);} setSelectionMode(false); setSelectedIds(new Set()); toast("Готово"); },
+    bulkAction: async (type) => { if(!selectedIds.size)return; const ids=Array.from(selectedIds); if(type==='delete'){if(!confirm("Удалить выбранные?"))return; if(view==='trash'){setTasks(p=>p.filter(t=>!selectedIds.has(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);}}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:false}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:false}).in('id',ids);} setSelectionMode(false); setSelectedIds(new Set()); toast("Готово"); },
     clearAll: async () => { if(!confirm("Очистить?"))return; const ids=filteredTasks(tasks,view,search).map(t=>t.id); if(view==='trash'){setTasks(p=>p.filter(t=>!ids.includes(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>ids.includes(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);} toast("Очищено"); },
     generateAi: async () => { if(!newT.title)return toast("Название?","error"); setAiLoading(true); setAiResult(''); try{const {data,error}=await supabase.functions.invoke('ai-assistant',{body:{taskTitle:newT.title,taskDescription:newT.description,type:newT.type,customInstruction:aiInstruction}}); if(error)throw error; setAiResult(data.result);}catch{toast("Ошибка AI","error");}finally{setAiLoading(false);} }
   };
@@ -340,37 +374,71 @@ const MainApp = () => {
       setAiInstruction(''); setAiResult('');
   };
 
-  // Filter Helper for Re-use
-  const filteredTasksFn = (allTasks, v, s) => {
-      let res = allTasks;
-      if (s) { const l = s.toLowerCase(); res = res.filter(t => t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(l))); }
-      if (v === 'trash') return res.filter(t => t.is_deleted);
-      res = res.filter(t => !t.is_deleted);
-      if (v === 'completed') return res.filter(t => t.completed);
-      res = res.filter(t => !t.completed);
-      const today = new Date().setHours(0,0,0,0);
-      const tomorrow = today + 86400000;
-      if (v === 'today') return res.filter(t => t.next_run && new Date(t.next_run) >= today && new Date(t.next_run) < tomorrow);
-      if (v === 'upcoming') return res.filter(t => t.next_run && new Date(t.next_run) >= tomorrow);
-      if (v === 'flagged') return res.filter(t => t.is_flagged);
-      if (v === 'all') return res;
-      return res.filter(t => t.list_id === v);
+  const filteredTasks = useMemo(() => {
+    let res = tasks;
+    if (search) {
+        const l = search.toLowerCase();
+        res = res.filter(t => t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(l)));
+    }
+    if (view === 'trash') return res.filter(t => t.is_deleted);
+    res = res.filter(t => !t.is_deleted);
+    if (view === 'completed') return res.filter(t => t.completed);
+    res = res.filter(t => !t.completed);
+
+    const today = new Date().setHours(0,0,0,0);
+    const tomorrow = today + 86400000;
+    if (view === 'today') return res.filter(t => t.next_run && new Date(t.next_run) >= today && new Date(t.next_run) < tomorrow);
+    if (view === 'upcoming') return res.filter(t => t.next_run && new Date(t.next_run) >= tomorrow);
+    if (view === 'flagged') return res.filter(t => t.is_flagged);
+    if (view === 'all') return res;
+    return res.filter(t => t.list_id === view);
+  }, [tasks, view, search]);
+
+  const counts = {
+    today: tasks.filter(t => !t.is_deleted && !t.completed && t.next_run && new Date(t.next_run) >= new Date().setHours(0,0,0,0) && new Date(t.next_run) < new Date().setHours(0,0,0,0)+86400000).length,
+    upcoming: tasks.filter(t => !t.is_deleted && !t.completed && t.next_run && new Date(t.next_run) >= new Date().setHours(0,0,0,0)+86400000).length,
+    all: tasks.filter(t => !t.is_deleted && !t.completed).length,
+    flagged: tasks.filter(t => !t.is_deleted && !t.completed && t.is_flagged).length,
   };
 
-  const filteredTasks = useMemo(() => filteredTasksFn(tasks, view, search), [tasks, view, search]);
-  const counts = {
-    today: filteredTasksFn(tasks, 'today').length,
-    upcoming: filteredTasksFn(tasks, 'upcoming').length,
-    all: filteredTasksFn(tasks, 'all').length,
-    flagged: filteredTasksFn(tasks, 'flagged').length,
-  };
+  const scheduledSections = useMemo(() => {
+      if(view !== 'upcoming') return [];
+      const today = new Date(); today.setHours(0,0,0,0);
+      const res = [];
+      const overdue = filteredTasks.filter(t => t.next_run && new Date(t.next_run) < today);
+      if(overdue.length) res.push({title:'Просрочено', data:overdue, isOverdue: true});
+      
+      for(let i=0; i<=14; i++){
+          const d = new Date(today); d.setDate(today.getDate()+i);
+          const s = d.getTime(), e = s + 86400000;
+          const dt = filteredTasks.filter(t => { if(!t.next_run)return false; const tm=new Date(t.next_run).getTime(); return tm>=s && tm<e; });
+          let title = d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',weekday:'short'});
+          if(i===0)title='Сегодня'; if(i===1)title='Завтра';
+          res.push({title, data:dt, compact: dt.length===0});
+      }
+      const fut = new Date(today); fut.setDate(today.getDate()+15);
+      const futT = filteredTasks.filter(t => t.next_run && new Date(t.next_run) >= fut);
+      if(futT.length) res.push({title:'Позже', data:futT});
+      return res;
+  }, [filteredTasks, view]);
+
+  const isCustomList = !['home', 'today', 'upcoming', 'all', 'flagged', 'trash', 'completed'].includes(view);
 
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
-      {view === 'home' ? (
+      {view === 'home' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
-          <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-black ml-1">Мои дела</h2><button onClick={() => setTemplateManager(true)} className="bg-gray-200 text-black font-bold px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 active:scale-95 transition"><Zap size={16}/> Шаблоны</button></div>
-          <div className="relative bg-[#E3E3E8] rounded-xl flex items-center px-3 py-2"><Search className="text-gray-400" size={18} /><input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск" value={search} onChange={e => setSearch(e.target.value)} />{search && <button onClick={() => setSearch('')}><X size={16} className="text-gray-400"/></button>}</div>
+          <div className="flex justify-between items-center">
+             <h2 className="text-xl font-bold text-black ml-1">Мои дела</h2>
+             <button onClick={() => setTemplateManager(true)} className="bg-gray-200 text-black font-bold px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 active:scale-95 transition"><Zap size={16}/> Шаблоны</button>
+          </div>
+          
+          <div className="relative bg-[#E3E3E8] rounded-xl flex items-center px-3 py-2">
+            <Search className="text-gray-400" size={18} />
+            <input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск (задача, дата)" value={search} onChange={e => setSearch(e.target.value)} />
+            {search && <button onClick={() => setSearch('')}><X size={16} className="text-gray-400"/></button>}
+          </div>
+
           {!search ? (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -392,39 +460,95 @@ const MainApp = () => {
               </div>
               <div className="flex justify-end mb-12"><button onClick={() => actions.openListModal()} className="text-blue-600 font-medium text-lg p-2">Добавить список</button></div>
             </>
-          ) : <div className="space-y-2">{filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}</div>}
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col h-full animate-in slide-in-from-right-8 duration-300 relative">
-          <div className="px-4 pt-2 pb-2 bg-[#F2F2F7] sticky top-0 z-20 flex items-center justify-between">
-             <div className="flex items-center gap-2"><button onClick={() => {setView('home'); setSelectionMode(false);}} className="flex items-center text-blue-600 font-medium text-[17px] -ml-2"><ChevronLeft size={24} /> Списки</button></div>
-             <div className="flex items-center gap-4">{!['home','today','upcoming','all','flagged','trash','completed'].includes(view) && <button onClick={() => actions.openListModal(view)} className="text-blue-600"><Settings size={22}/></button>} {filteredTasks.length>0 && <button onClick={() => {setSelectionMode(!selectionMode); setSelectedIds(new Set());}} className="text-blue-600 font-medium text-[17px]">{selectionMode ? 'Готово' : 'Выбрать'}</button>}</div>
-          </div>
-          <div className="px-4 pb-4 flex justify-between items-end"><h1 className="text-3xl font-bold text-blue-600">{view==='today'?'Сегодня':view==='upcoming'?'Запланировано':view==='all'?'Все':view==='flagged'?'С флажком':view==='trash'?'Корзина':view==='completed'?'Выполнено':lists.find(l=>l.id===view)?.title||'Список'}</h1>{['trash','completed'].includes(view)&&filteredTasks.length>0&&!selectionMode&&<button onClick={actions.clearAll} className="text-red-500 text-sm font-medium bg-white/50 px-3 py-1 rounded-lg shadow-sm">Очистить</button>}</div>
-          <div className="flex-1 px-4 pb-36 overflow-y-auto space-y-3">
-             {view==='upcoming'&&!selectionMode ? <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal}/> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}><SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>{filteredTasks.length===0?<div className="text-center py-20 text-gray-400">Нет напоминаний</div>:filteredTasks.map(t=><TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>)}</SortableContext></DndContext>}
-          </div>
-          {!selectionMode && !['trash','completed'].includes(view) && <div className="fixed bottom-6 right-6 z-30"><button onClick={() => setTaskModal(true)} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform"><Plus size={32}/></button></div>}
-          {selectionMode && <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7] border-t border-gray-200 z-30 flex justify-between items-center"><div className="text-gray-500 font-medium">Выбрано: {selectedIds.size}</div><div className="flex gap-4">{view==='trash'?<button onClick={()=>actions.bulkAction('restore')} disabled={!selectedIds.size} className="text-blue-600 font-bold disabled:text-gray-400">Восстановить</button>:<div/>}<button onClick={()=>actions.bulkAction('delete')} disabled={!selectedIds.size} className="text-red-500 font-bold disabled:text-gray-300">Удалить</button></div></div>}
+          ) : (
+              <div className="space-y-2">{filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}</div>
+          )}
         </div>
       )}
 
+      {view !== 'home' && (
+        <div className="flex-1 flex flex-col h-full animate-in slide-in-from-right-8 duration-300 relative">
+          <div className="px-4 pt-2 pb-2 bg-[#F2F2F7] sticky top-0 z-20 flex items-center justify-between">
+             <div className="flex items-center gap-2"><button onClick={() => {setView('home'); setSelectionMode(false);}} className="flex items-center text-blue-600 font-medium text-[17px] -ml-2"><ChevronLeft size={24} /> Списки</button></div>
+             <div className="flex items-center gap-4">
+                 {isCustomList && <button onClick={() => actions.openListModal(view)} className="text-blue-600"><Settings size={22}/></button>}
+                 {filteredTasks.length > 0 && <button onClick={() => {setSelectionMode(!selectionMode); setSelectedIds(new Set());}} className="text-blue-600 font-medium text-[17px]">{selectionMode ? 'Готово' : 'Выбрать'}</button>}
+             </div>
+          </div>
+          <div className="px-4 pb-4 flex justify-between items-end">
+             <h1 className="text-3xl font-bold text-blue-600">{view === 'today' ? 'Сегодня' : view === 'upcoming' ? 'Запланировано' : view === 'all' ? 'Все' : view === 'flagged' ? 'С флажком' : view === 'trash' ? 'Корзина' : view === 'completed' ? 'Выполнено' : lists.find(l=>l.id===view)?.title || 'Список'}</h1>
+             {(view === 'trash' || view === 'completed') && filteredTasks.length > 0 && !selectionMode && <button onClick={actions.clearAll} className="text-red-500 text-sm font-medium bg-white/50 px-3 py-1 rounded-lg shadow-sm">Очистить</button>}
+          </div>
+
+          <div className="flex-1 px-4 pb-36 overflow-y-auto space-y-3">
+             {view === 'upcoming' && !selectionMode ? (
+                 <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal} />
+             ) : (
+                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
+                    <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
+                        {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
+                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
+                        ))}
+                    </SortableContext>
+                 </DndContext>
+             )}
+          </div>
+
+          {!selectionMode && !['trash','completed'].includes(view) && (
+            <div className="fixed bottom-6 right-6 z-30">
+               <button onClick={() => setTaskModal(true)} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
+                  <Plus size={32} />
+               </button>
+            </div>
+          )}
+          {selectionMode && (
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7] border-t border-gray-200 z-30 flex justify-between items-center">
+                <div className="text-gray-500 font-medium">Выбрано: {selectedIds.size}</div>
+                <div className="flex gap-4">
+                    {view === 'trash' ? <button onClick={() => actions.bulkAction('restore')} disabled={!selectedIds.size} className="text-blue-600 font-bold disabled:text-gray-400">Восстановить</button> : <div/>}
+                    <button onClick={() => actions.bulkAction('delete')} disabled={!selectedIds.size} className="text-red-500 font-bold disabled:text-gray-300">Удалить</button>
+                </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TASK MODAL */}
       {taskModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
            <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[95vh] flex flex-col shadow-2xl animate-slide-up-ios">
-              <div className="flex justify-between items-center px-4 py-4 bg-[#F2F2F7] rounded-t-2xl border-b border-gray-200/50"><button onClick={closeModal} className="text-blue-600 text-[17px]">Отмена</button><span className="font-bold text-black text-[17px]">{editingId ? 'Правка' : 'Новое'}</span><button onClick={actions.saveTask} className={`text-[17px] font-bold ${newT.title ? 'text-blue-600' : 'text-gray-400'}`}>{editingId ? 'Готово' : 'Добавить'}</button></div>
+              <div className="flex justify-between items-center px-4 py-4 bg-[#F2F2F7] rounded-t-2xl border-b border-gray-200/50">
+                 <button onClick={closeModal} className="text-blue-600 text-[17px]">Отмена</button>
+                 <span className="font-bold text-black text-[17px]">{editingId ? 'Правка' : 'Новое'}</span>
+                 <button onClick={actions.saveTask} className={`text-[17px] font-bold ${newT.title ? 'text-blue-600' : 'text-gray-400'}`}>{editingId ? 'Готово' : 'Добавить'}</button>
+              </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-6">
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm">
                      <input className="w-full p-4 text-[17px] border-b border-gray-100 outline-none placeholder-gray-400 text-black" placeholder="Название" value={newT.title} onChange={e => setNewT({...newT, title: e.target.value})} autoFocus />
                      <textarea className="w-full p-4 text-[15px] outline-none resize-none h-24 placeholder-gray-400 text-black" placeholder="Заметки (или текст для AI)" value={newT.description} onChange={e => setNewT({...newT, description: e.target.value})} />
                      <div className="relative border-t border-gray-100"><div className="absolute left-4 top-3 text-gray-400"><LinkIcon size={18}/></div><input className="w-full p-3 pl-12 text-[15px] outline-none placeholder-gray-400 text-blue-600" placeholder="URL (ссылка)" value={newT.url} onChange={e => setNewT({...newT, url: e.target.value})} /></div>
                  </div>
+                 
+                 {/* AI BLOCK */}
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
-                    <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div><button onClick={() => setTemplatesPicker(true)} className="text-xs bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200"><Zap size={12}/> Шаблоны</button></div>
-                    <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
-                    <div className="flex gap-2"><button onClick={actions.generateAi} disabled={aiLoading} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button><button onClick={actions.saveTemplate} className="px-3 bg-gray-100 text-gray-600 rounded-lg active:scale-95"><Zap size={20}/></button></div>
-                    {aiResult && <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in"><div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div><button onClick={() => { setNewT(p => ({...p, description: aiResult})); toast("Вставлено в заметки"); }} className="w-full bg-black text-white text-sm font-bold py-2 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={14}/> Вставить в заметки</button></div>}
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div>
+                        <button onClick={() => setTemplatesPicker(true)} className="text-xs bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200"><Zap size={12}/> Шаблоны</button>
+                    </div>
+                    <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
+                    <div className="flex gap-2">
+                        <button onClick={actions.generateAi} disabled={aiLoading} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
+                        {/* SAVE AS TEMPLATE BTN */}
+                        <button onClick={actions.saveTemplate} className="px-3 bg-gray-100 text-gray-600 rounded-lg active:scale-95"><Zap size={20}/></button>
+                    </div>
+                    {aiResult && (
+                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in">
+                            <div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div>
+                            <button onClick={() => { setNewT(p => ({...p, description: aiResult})); toast("Вставлено в заметки"); }} className="w-full bg-black text-white text-sm font-bold py-2 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={14}/> Вставить в заметки</button>
+                        </div>
+                    )}
                  </div>
+
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
                     <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center text-white"><CalendarIcon size={18} fill="white" /></div><span className="text-[17px] text-black">Дата</span></div><IOSSwitch checked={hasDate} onChange={setHasDate} /></div>
                     {hasDate && <div className="bg-white px-4 pb-3 animate-fade-in-ios"><input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" /></div>}
@@ -434,27 +558,73 @@ const MainApp = () => {
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
                     <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-orange-500 flex items-center justify-center text-white"><Flag size={18} fill="white" /></div><span className="text-[17px] text-black">Флаг</span></div><IOSSwitch checked={newT.is_flagged} onChange={v => setNewT({...newT, is_flagged: v})} /></div>
                     <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Приоритет</span><div className="flex items-center gap-1"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.priority} onChange={e => setNewT({...newT, priority: parseInt(e.target.value)})}>{['Нет','Низкий','Средний','Высокий'].map((v,i)=><option key={i} value={i}>{v}</option>)}</select><span className="absolute right-9 text-gray-500">{['Нет','!','!!','!!!'][newT.priority]}</span><ChevronRight size={16} className="text-gray-400 absolute right-3" /></div></div>
-                    <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Действие</span><div className="flex items-center gap-1 relative"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.type} onChange={e => setNewT({...newT, type: e.target.value})}><option value="reminder">Нет</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option><option value="web_search">Поиск</option><option value="copy">Копировать</option><option value="call">Позвонить</option></select><ChevronRight size={16} className="text-gray-400 absolute right-0" /></div></div>
+                    {/* ACTION SELECTOR */}
+                    <div onClick={() => setActionPicker(true)} className="bg-white p-3.5 flex justify-between items-center cursor-pointer active:bg-gray-50">
+                        <span className="text-[17px] text-black">Действие</span>
+                        <div className="flex items-center gap-1">
+                             <span className="text-blue-600 text-[17px] mr-1">{ACTION_NAMES[newT.type] || 'Нет'}</span>
+                             <ChevronRight size={16} className="text-gray-400" />
+                        </div>
+                    </div>
                  </div>
               </div>
            </div>
         </div>
       )}
 
+      {/* ACTION PICKER */}
+      {actionPicker && (
+          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center">
+              <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[70vh] flex flex-col shadow-2xl animate-slide-up-ios">
+                  <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200">
+                      <button onClick={() => setActionPicker(false)} className="text-blue-600 font-medium text-[17px]">Готово</button>
+                      <h3 className="font-bold text-black text-[17px]">Выбор действия</h3>
+                      <div className="w-8"/>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                      <div>
+                          <h4 className="text-gray-500 text-xs uppercase font-bold mb-2 ml-2">Базовые</h4>
+                          <div className="bg-white rounded-xl overflow-hidden">
+                              {Object.entries(ACTION_NAMES).map(([key, label], i, arr) => (
+                                  <div key={key} onClick={() => { setNewT(p => ({...p, type: key})); setActionPicker(false); }} className={`p-3.5 flex items-center gap-3 active:bg-gray-50 ${i!==arr.length-1?'border-b border-gray-100':''}`}>
+                                      {ACTION_ICONS[key]}
+                                      <span className="text-[17px] text-black flex-1">{label}</span>
+                                      {newT.type === key && <Check size={18} className="text-blue-600"/>}
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* TEMPLATE MANAGER MODAL */}
       {templateManager && (
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-2xl h-[80vh] flex flex-col shadow-2xl animate-slide-up-ios">
-                  <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200"><button onClick={() => setTemplateManager(false)} className="text-blue-600 font-medium">Закрыть</button><h3 className="font-bold text-black">Управление</h3><div className="w-8"/></div>
+                  <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200">
+                      <button onClick={() => setTemplateManager(false)} className="text-blue-600 font-medium">Закрыть</button>
+                      <h3 className="font-bold text-black">Управление шаблонами</h3>
+                      <div className="w-8"/>
+                  </div>
                   <div className="flex-1 overflow-y-auto p-4 space-y-3">
                       {templates.length === 0 && <div className="text-center text-gray-400 mt-10">Нет шаблонов</div>}
                       {templates.map(t => (
-                          <div key={t.id} className="bg-white p-3 rounded-xl flex items-center justify-between shadow-sm"><div><div className="font-bold text-black">{t.title}</div><div className="text-xs text-gray-500">{t.type}</div></div><button onClick={() => actions.deleteTemplate(t.id)} className="text-red-500 p-2"><Trash2 size={18}/></button></div>
+                          <div key={t.id} className="bg-white p-3 rounded-xl flex items-center justify-between shadow-sm">
+                              <div>
+                                  <div className="font-bold text-black">{t.title}</div>
+                                  <div className="text-xs text-gray-500">{t.type}</div>
+                              </div>
+                              <button onClick={() => actions.deleteTemplate(t.id)} className="text-red-500 p-2"><Trash2 size={18}/></button>
+                          </div>
                       ))}
                   </div>
               </div>
           </div>
       )}
 
+      {/* TEMPLATE PICKER MODAL */}
       {templatesPicker && (
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
               <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios max-h-[60vh] overflow-y-auto">
@@ -462,7 +632,10 @@ const MainApp = () => {
                   <div className="space-y-2">
                       {templates.length === 0 && <div className="text-center text-gray-400">Нет шаблонов</div>}
                       {templates.map(t => (
-                          <button key={t.id} onClick={() => actions.applyTemplate(t)} className="w-full bg-gray-50 p-3 rounded-xl text-left hover:bg-gray-100 active:scale-95 transition"><div className="font-bold text-black">{t.title}</div><div className="text-xs text-gray-500 line-clamp-1">{t.description}</div></button>
+                          <button key={t.id} onClick={() => actions.applyTemplate(t)} className="w-full bg-gray-50 p-3 rounded-xl text-left hover:bg-gray-100 active:scale-95 transition">
+                              <div className="font-bold text-black">{t.title}</div>
+                              <div className="text-xs text-gray-500 line-clamp-1">{t.description}</div>
+                          </button>
                       ))}
                   </div>
                   <button onClick={() => setTemplatesPicker(false)} className="w-full mt-4 py-3 text-gray-500 font-medium">Отмена</button>
@@ -476,13 +649,35 @@ const MainApp = () => {
               <h3 className="text-lg font-bold text-center mb-4 text-black">{editingListId ? 'Название списка' : 'Новый список'}</h3>
               <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
               <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-black" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
-              <div className="flex gap-2"><button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button><button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button></div>
-              {editingListId && <button onClick={actions.deleteList} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
+              <div className="flex gap-2">
+                  <button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button>
+                  <button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button>
+              </div>
+              {editingListId && (
+                  <button onClick={actions.deleteList} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>
+              )}
            </div>
         </div>
       )}
     </div>
   );
+};
+
+const ACTION_ICONS = {
+    email: <Mail size={18} className="text-blue-500" />,
+    whatsapp: <MessageCircle size={18} className="text-green-500" />,
+    web_search: <Search size={18} className="text-orange-500" />,
+    copy: <Copy size={18} className="text-gray-500" />,
+    call: <Phone size={18} className="text-green-600" />
+};
+
+const ACTION_NAMES = {
+    reminder: 'Нет действия',
+    email: 'Email',
+    whatsapp: 'WhatsApp',
+    web_search: 'Поиск',
+    copy: 'Копировать',
+    call: 'Позвонить'
 };
 
 export default () => (
