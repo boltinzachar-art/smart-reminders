@@ -12,7 +12,28 @@ import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerS
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+// --- CONSTANTS (MOVED TO TOP) ---
+
+const ACTION_ICONS = {
+    reminder: <span className="text-gray-400 text-xs">Нет</span>,
+    email: <Mail size={18} className="text-blue-500" />,
+    whatsapp: <MessageCircle size={18} className="text-green-500" />,
+    web_search: <Search size={18} className="text-orange-500" />,
+    copy: <Copy size={18} className="text-gray-500" />,
+    call: <Phone size={18} className="text-green-600" />
+};
+
+const ACTION_NAMES = {
+    reminder: 'Нет действия',
+    email: 'Email',
+    whatsapp: 'WhatsApp',
+    web_search: 'Поиск',
+    copy: 'Копировать',
+    call: 'Позвонить'
+};
+
 // --- 1. SYSTEM COMPONENTS ---
+
 const ToastContext = createContext();
 const ToastProvider = ({ children }) => {
   const [msg, setMsg] = useState(null);
@@ -43,6 +64,7 @@ class ErrorBoundary extends React.Component {
 }
 
 // --- 2. UI COMPONENTS ---
+
 const IOSSwitch = ({ checked, onChange }) => (
   <button onClick={() => onChange(!checked)} className={`w-[51px] h-[31px] rounded-full p-0.5 transition-colors duration-300 focus:outline-none ${checked ? 'bg-[#34C759]' : 'bg-[#E9E9EA]'}`}>
     <div className={`w-[27px] h-[27px] bg-white rounded-full shadow-sm transition-transform duration-300 ${checked ? 'translate-x-[20px]' : 'translate-x-0'}`} />
@@ -50,6 +72,7 @@ const IOSSwitch = ({ checked, onChange }) => (
 );
 
 // --- HELPERS ---
+
 const calculateNextRun = (current, freq) => {
   if (!current) return null;
   const d = new Date(current);
@@ -86,14 +109,6 @@ const performAction = (e, task, showToast) => {
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
-const ACTION_ICONS = {
-    email: <Mail size={14} />,
-    whatsapp: <MessageCircle size={14} />,
-    web_search: <Search size={14} />,
-    copy: <Copy size={14} />,
-    call: <Phone size={14} />
-};
-
 // --- CARD COMPONENT ---
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
@@ -124,6 +139,16 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   else if (isCompleting) circleClass += "animate-blink-3 border-gray-300";
   else if (task.completed) circleClass += "bg-blue-500 border-blue-500";
   else circleClass += "border-gray-300 hover:border-blue-500 bg-transparent";
+
+  // Получаем иконку для кнопки действия
+  // Используем клонирование элемента для изменения размера, если нужно, 
+  // или просто рендерим соответствующую иконку
+  let ActionIconComponent = null;
+  if (task.type === 'email') ActionIconComponent = <Mail size={14} />;
+  else if (task.type === 'whatsapp') ActionIconComponent = <MessageCircle size={14} />;
+  else if (task.type === 'web_search') ActionIconComponent = <Search size={14} />;
+  else if (task.type === 'copy') ActionIconComponent = <Copy size={14} />;
+  else if (task.type === 'call') ActionIconComponent = <Phone size={14} />;
 
   return (
     <div ref={setNodeRef} style={style} onClick={(e) => selectionMode && onSelect(task.id)} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
@@ -158,9 +183,9 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
               </a>
           )}
 
-          {task.type !== 'reminder' && ACTION_ICONS[task.type] && (
+          {task.type !== 'reminder' && ActionIconComponent && (
             <button onPointerDown={e => e.stopPropagation()} onClick={(e) => performAction(e, task, toast)} className="text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded flex items-center gap-1 hover:bg-gray-200 transition">
-                {ACTION_ICONS[task.type]} {task.type === 'whatsapp' ? 'WhatsApp' : task.type === 'copy' ? 'Копия' : 'Действие'}
+                {ActionIconComponent} {ACTION_NAMES[task.type]}
             </button>
           )}
         </div>
@@ -172,56 +197,36 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
-// --- SCHEDULED VIEW (ИСПРАВЛЕНО!) ---
 const ScheduledView = ({ tasks, actions, onEdit }) => {
     const sections = useMemo(() => {
       const today = new Date(); today.setHours(0,0,0,0);
       const result = [];
-      
-      // Просроченные
-      const overdue = tasks.filter(t => t.next_run && new Date(t.next_run) < today && !t.completed && !t.is_deleted);
+      const overdue = tasks.filter(t => t.next_run && new Date(t.next_run) < today);
       if (overdue.length > 0) result.push({ title: 'Просрочено', data: overdue, isOverdue: true });
-      
-      // Следующие 15 дней
       for (let i = 0; i <= 14; i++) {
           const d = new Date(today); d.setDate(today.getDate() + i);
-          const dayStart = d.getTime(); 
-          const dayEnd = dayStart + 86400000;
-          
-          const dayTasks = tasks.filter(t => {
-             if (!t.next_run || t.completed || t.is_deleted) return false;
-             const tTime = new Date(t.next_run).getTime();
-             return tTime >= dayStart && tTime < dayEnd;
+          const s = d.getTime(), e = s + 86400000;
+          const dayTasks = tasks.filter(t => { 
+              if(!t.next_run)return false; 
+              const tm=new Date(t.next_run).getTime(); 
+              return tm>=s && tm<e; 
           });
-          
           let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
-          if (i === 0) title = 'Сегодня'; 
-          if (i === 1) title = 'Завтра';
-          
-          result.push({ 
-              title: title, 
-              data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), 
-              isCompact: dayTasks.length === 0 
-          });
+          if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
+          result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
       }
-      
-      // Позже
-      const futureStart = new Date(today); futureStart.setDate(today.getDate() + 15);
-      const futureTasks = tasks.filter(t => t.next_run && new Date(t.next_run) >= futureStart && !t.completed && !t.is_deleted);
-      if (futureTasks.length > 0) {
-          result.push({ title: 'Позже', data: futureTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)) });
-      }
+      const fut = new Date(today); fut.setDate(today.getDate() + 15);
+      const futTasks = tasks.filter(t => t.next_run && new Date(t.next_run) >= fut);
+      if(futTasks.length > 0) result.push({ title: 'Позже', data: futTasks });
       
       return result;
-    }, [tasks]); // Убрана зависимость view/filteredTasks, так как tasks уже переданы фильтрованными
+    }, [tasks]);
 
     return (
         <div className="pb-40">
             {sections.map((s, i) => (
                 <div key={i} className={`mb-2 ${s.isCompact?'opacity-50':''}`}>
-                    <div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.isCompact?'text-sm py-1':''}`}>
-                        <span>{s.title}</span>
-                    </div>
+                    <div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.isCompact?'text-sm py-1':''}`}><span>{s.title}</span></div>
                     {!s.isCompact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}
                 </div>
             ))}
@@ -231,6 +236,7 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
 
 const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (<button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform"><div className="flex justify-between w-full"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}><Icon size={18} className="text-white" /></div><span className="text-2xl font-bold text-black">{count || 0}</span></div><span className="text-gray-500 font-medium text-[15px] self-start">{title}</span></button>);
 const UserListItem = ({ list, count, onClick }) => (<div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer"><div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div><span className="flex-1 text-[17px] font-medium text-black">{list.title}</span><span className="text-gray-400 text-[15px]">{count || 0}</span><ChevronRight size={16} className="text-gray-300" /></div>);
+
 
 // --- 3. MAIN LOGIC ---
 
@@ -351,7 +357,17 @@ const MainApp = () => {
     reorder: (e) => { const {active,over}=e; if(active.id!==over.id){setTasks(items=>{const n=arrayMove(items,items.findIndex(t=>t.id===active.id),items.findIndex(t=>t.id===over.id)); if(isOnline){const u=n.map((t,i)=>({id:t.id,position:i,title:t.title,telegram_user_id:userId})).filter(t=>!t.id.toString().startsWith('temp-')); supabase.from('tasks').upsert(u).then();} return n;});} },
     bulkAction: async (type) => { if(!selectedIds.size)return; const ids=Array.from(selectedIds); if(type==='delete'){if(!confirm("Удалить выбранные?"))return; if(view==='trash'){setTasks(p=>p.filter(t=>!selectedIds.has(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);}}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:false}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:false}).in('id',ids);} setSelectionMode(false); setSelectedIds(new Set()); toast("Готово"); },
     clearAll: async () => { if(!confirm("Очистить?"))return; const ids=filteredTasks(tasks,view,search).map(t=>t.id); if(view==='trash'){setTasks(p=>p.filter(t=>!ids.includes(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>ids.includes(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);} toast("Очищено"); },
-    generateAi: async () => { if(!newT.title)return toast("Название?","error"); setAiLoading(true); setAiResult(''); try{const {data,error}=await supabase.functions.invoke('ai-assistant',{body:{taskTitle:newT.title,taskDescription:newT.description,type:newT.type,customInstruction:aiInstruction}}); if(error)throw error; setAiResult(data.result);}catch{toast("Ошибка AI","error");}finally{setAiLoading(false);} }
+    generateAi: async () => { if(!newT.title)return toast("Название?","error"); setAiLoading(true); setAiResult(''); try{const {data,error}=await supabase.functions.invoke('ai-assistant',{body:{taskTitle:newT.title,taskDescription:newT.description,type:newT.type,customInstruction:aiInstruction}}); if(error)throw error; setAiResult(data.result);}catch{toast("Ошибка AI","error");}finally{setAiLoading(false);} },
+    applyAction: (type, description = '', title = '') => {
+        setNewT(prev => ({
+            ...prev,
+            type: type,
+            description: description || prev.description,
+            title: title || prev.title
+        }));
+        setActionPicker(false);
+        if (description) toast("Шаблон применен");
+    }
   };
 
   const openEditModal = (task) => {
@@ -523,10 +539,8 @@ const MainApp = () => {
                  <button onClick={actions.saveTask} className={`text-[17px] font-bold ${newT.title ? 'text-blue-600' : 'text-gray-400'}`}>{editingId ? 'Готово' : 'Добавить'}</button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                 <div className="bg-white rounded-xl overflow-hidden shadow-sm">
-                     <input className="w-full p-4 text-[17px] border-b border-gray-100 outline-none placeholder-gray-400 text-black" placeholder="Название" value={newT.title} onChange={e => setNewT({...newT, title: e.target.value})} autoFocus />
-                     <textarea className="w-full p-4 text-[15px] outline-none resize-none h-24 placeholder-gray-400 text-black" placeholder="Заметки (или текст для AI)" value={newT.description} onChange={e => setNewT({...newT, description: e.target.value})} />
-                     <div className="relative border-t border-gray-100"><div className="absolute left-4 top-3 text-gray-400"><LinkIcon size={18}/></div><input className="w-full p-3 pl-12 text-[15px] outline-none placeholder-gray-400 text-blue-600" placeholder="URL (ссылка)" value={newT.url} onChange={e => setNewT({...newT, url: e.target.value})} /></div>
+                 <div className="bg-white rounded-xl overflow-hidden shadow-sm"><input className="w-full p-4 text-[17px] border-b border-gray-100 outline-none placeholder-gray-400 text-black" placeholder="Название" value={newT.title} onChange={e => setNewT({...newT, title: e.target.value})} autoFocus /><textarea className="w-full p-4 text-[15px] outline-none resize-none h-24 placeholder-gray-400 text-black" placeholder="Заметки (или текст для AI)" value={newT.description} onChange={e => setNewT({...newT, description: e.target.value})} />
+                    <div className="relative border-t border-gray-100"><div className="absolute left-4 top-3 text-gray-400"><LinkIcon size={18}/></div><input className="w-full p-3 pl-12 text-[15px] outline-none placeholder-gray-400 text-blue-600" placeholder="URL (ссылка)" value={newT.url} onChange={e => setNewT({...newT, url: e.target.value})} /></div>
                  </div>
                  
                  {/* AI BLOCK */}
@@ -538,7 +552,6 @@ const MainApp = () => {
                     <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
                     <div className="flex gap-2">
                         <button onClick={actions.generateAi} disabled={aiLoading} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
-                        {/* SAVE AS TEMPLATE BTN */}
                         <button onClick={actions.saveTemplate} className="px-3 bg-gray-100 text-gray-600 rounded-lg active:scale-95"><Zap size={20}/></button>
                     </div>
                     {aiResult && (
@@ -661,23 +674,6 @@ const MainApp = () => {
       )}
     </div>
   );
-};
-
-const ACTION_ICONS = {
-    email: <Mail size={18} className="text-blue-500" />,
-    whatsapp: <MessageCircle size={18} className="text-green-500" />,
-    web_search: <Search size={18} className="text-orange-500" />,
-    copy: <Copy size={18} className="text-gray-500" />,
-    call: <Phone size={18} className="text-green-600" />
-};
-
-const ACTION_NAMES = {
-    reminder: 'Нет действия',
-    email: 'Email',
-    whatsapp: 'WhatsApp',
-    web_search: 'Поиск',
-    copy: 'Копировать',
-    call: 'Позвонить'
 };
 
 export default () => (
