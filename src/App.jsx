@@ -5,7 +5,7 @@ import {
   Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
-  Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown
+  Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -24,7 +24,7 @@ const ToastProvider = ({ children }) => {
     <ToastContext.Provider value={show}>
       {children}
       {msg && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg z-[100] text-sm font-bold animate-in fade-in slide-in-from-top-5 flex items-center gap-2 ${msg.type === 'error' ? 'bg-red-500 text-white' : 'bg-black/80 text-white backdrop-blur'}`}>
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg z-[100] text-sm font-bold animate-fade-in-ios flex items-center gap-2 ${msg.type === 'error' ? 'bg-red-500 text-white' : 'bg-black/80 text-white backdrop-blur'}`}>
           {msg.type === 'error' ? <AlertTriangle size={16}/> : <CheckCircle2 size={16}/>} {msg.text}
         </div>
       )}
@@ -48,29 +48,6 @@ const IOSSwitch = ({ checked, onChange }) => (
   <button onClick={() => onChange(!checked)} className={`w-[51px] h-[31px] rounded-full p-0.5 transition-colors duration-300 focus:outline-none ${checked ? 'bg-[#34C759]' : 'bg-[#E9E9EA]'}`}>
     <div className={`w-[27px] h-[27px] bg-white rounded-full shadow-sm transition-transform duration-300 ${checked ? 'translate-x-[20px]' : 'translate-x-0'}`} />
   </button>
-);
-
-const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
-  <button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform">
-    <div className="flex justify-between w-full">
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}>
-        <Icon size={18} className="text-white" />
-      </div>
-      <span className="text-2xl font-bold text-black">{count || 0}</span>
-    </div>
-    <span className="text-gray-500 font-medium text-[15px] self-start">{title}</span>
-  </button>
-);
-
-const UserListItem = ({ list, count, onClick }) => (
-  <div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
-    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-      <ListIcon size={16} className="text-blue-600" />
-    </div>
-    <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
-    <span className="text-gray-400 text-[15px]">{count || 0}</span>
-    <ChevronRight size={16} className="text-gray-300" />
-  </div>
 );
 
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
@@ -123,7 +100,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
       <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center gap-1">
            {task.priority > 0 && <span className="text-blue-600 font-bold text-[17px] mr-1">{'!'.repeat(task.priority)}</span>}
-           <div className={`text-[17px] leading-tight break-words ${task.completed || isCompleting ? 'text-gray-400' : 'text-black'}`}>{task.title}</div>
+           <div className={`text-[17px] leading-tight break-words transition-colors ${task.completed || isCompleting ? 'text-gray-400' : 'text-black'}`}>{task.title}</div>
            {task.is_flagged && <Flag size={14} className="text-orange-500 fill-orange-500 ml-1" />}
         </div>
         {task.description && <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>}
@@ -151,7 +128,8 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
-const ScheduledView = ({ tasks, actions, onEdit, onAiGenerate }) => {
+// --- 3. SCHEDULED VIEW ---
+const ScheduledView = ({ tasks, actions, onEdit }) => {
   const sections = useMemo(() => {
     const today = new Date(); today.setHours(0,0,0,0);
     const result = [];
@@ -185,14 +163,14 @@ const ScheduledView = ({ tasks, actions, onEdit, onAiGenerate }) => {
                 <div className={`px-4 py-2 font-bold text-lg flex justify-between ${section.isOverdue ? 'text-red-500' : 'text-black'} ${section.isCompact ? 'text-sm py-1' : ''}`}>
                     <span>{section.title}</span>
                 </div>
-                {!section.isCompact && <div className="px-4 space-y-2">{section.data.map(task => <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} onAiGenerate={onAiGenerate} />)}</div>}
+                {!section.isCompact && <div className="px-4 space-y-2">{section.data.map(task => <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}
             </div>
         ))}
     </div>
   );
 };
 
-// --- 3. MAIN LOGIC ---
+// --- 4. MAIN APP ---
 
 const MainApp = () => {
   const toast = useToast();
@@ -207,9 +185,12 @@ const MainApp = () => {
   
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
-  const [aiModal, setAiModal] = useState(false);
-  const [aiData, setAiData] = useState({ loading: false, res: '' });
   const [editingId, setEditingId] = useState(null);
+  
+  // AI State (ВОТ ОНИ, ОТДЕЛЬНЫЕ!)
+  const [aiModal, setAiModal] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState('');
   const [aiInstruction, setAiInstruction] = useState('');
 
   const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
@@ -365,6 +346,7 @@ const MainApp = () => {
     generateAi: async () => {
         if (!newT.title) { toast("Напишите название для ИИ", "error"); return; }
         setAiLoading(true);
+        setAiResult('');
         try {
             const { data, error } = await supabase.functions.invoke('ai-assistant', {
                 body: { 
@@ -387,7 +369,7 @@ const MainApp = () => {
   const openEditModal = (task) => {
       setEditingId(task.id);
       setNewT({ title: task.title, description: task.description, type: task.type || 'reminder', frequency: task.frequency || 'once', priority: task.priority || 0, is_flagged: task.is_flagged || false });
-      setAiInstruction(''); setAiResult(''); // Reset AI
+      setAiInstruction(''); setAiResult('');
       if (task.next_run) {
           const d = new Date(task.next_run);
           setHasDate(true); setDateVal(d.toISOString().slice(0, 10));
@@ -403,6 +385,26 @@ const MainApp = () => {
       setHasDate(false); setHasTime(false);
       setAiInstruction(''); setAiResult('');
   };
+
+  // COMPONENTS FOR UI (Cards etc)
+  const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
+    <button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform">
+      <div className="flex justify-between w-full">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}><Icon size={18} className="text-white" /></div>
+        <span className="text-2xl font-bold text-black">{count || 0}</span>
+      </div>
+      <span className="text-gray-500 font-medium text-[15px] self-start">{title}</span>
+    </button>
+  );
+
+  const UserListItem = ({ list, count, onClick }) => (
+    <div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
+      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
+      <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
+      <span className="text-gray-400 text-[15px]">{count || 0}</span>
+      <ChevronRight size={16} className="text-gray-300" />
+    </div>
+  );
 
   const filteredTasks = useMemo(() => {
     let res = tasks;
@@ -430,27 +432,6 @@ const MainApp = () => {
     all: tasks.filter(t => !t.is_deleted && !t.completed).length,
     flagged: tasks.filter(t => !t.is_deleted && !t.completed && t.is_flagged).length,
   };
-
-  const scheduledSections = useMemo(() => {
-      if(view !== 'upcoming') return [];
-      const today = new Date(); today.setHours(0,0,0,0);
-      const res = [];
-      const overdue = filteredTasks.filter(t => t.next_run && new Date(t.next_run) < today);
-      if(overdue.length) res.push({title:'Просрочено', data:overdue, isOverdue: true});
-      
-      for(let i=0; i<=14; i++){
-          const d = new Date(today); d.setDate(today.getDate()+i);
-          const s = d.getTime(), e = s + 86400000;
-          const dt = filteredTasks.filter(t => { if(!t.next_run)return false; const tm=new Date(t.next_run).getTime(); return tm>=s && tm<e; });
-          let title = d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',weekday:'short'});
-          if(i===0)title='Сегодня'; if(i===1)title='Завтра';
-          res.push({title, data:dt, compact: dt.length===0});
-      }
-      const fut = new Date(today); fut.setDate(today.getDate()+15);
-      const futT = filteredTasks.filter(t => t.next_run && new Date(t.next_run) >= fut);
-      if(futT.length) res.push({title:'Позже', data:futT});
-      return res;
-  }, [filteredTasks, view]);
 
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
@@ -501,12 +482,7 @@ const MainApp = () => {
 
           <div className="flex-1 px-4 pb-36 overflow-y-auto space-y-3">
              {view === 'upcoming' && !selectionMode ? (
-                 <div className="pb-20">{scheduledSections.map((s,i) => (
-                    <div key={i} className={`mb-2 ${s.compact?'opacity-50':''}`}>
-                        <div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.compact?'text-sm py-1':''}`}><span>{s.title}</span></div>
-                        {!s.compact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={openEditModal} />)}</div>}
-                    </div>
-                 ))}</div>
+                 <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal} />
              ) : (
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
                     <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
@@ -547,7 +523,7 @@ const MainApp = () => {
                  
                  {/* AI BLOCK */}
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
-                    <div className="flex items-center gap-2 text-purple-600 font-bold"><Wand2 size={18}/> Текст действия (AI)</div>
+                    <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> Текст действия (AI)</div>
                     <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
                     <button onClick={actions.generateAi} disabled={aiLoading} className="w-full bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
                     {aiResult && (
