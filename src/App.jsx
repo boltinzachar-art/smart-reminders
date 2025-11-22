@@ -5,7 +5,7 @@ import {
   Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
-  Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDownToLine
+  Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -517,7 +517,7 @@ const MainApp = () => {
                       <div className="flex flex-col items-center py-8 text-gray-500"><Loader2 className="animate-spin mb-2" size={32} /><p>Думаю...</p></div>
                   ) : (
                       <div className="space-y-4"><div className="bg-gray-50 p-4 rounded-xl text-gray-800 text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto border border-gray-100">{aiData.res || "Ошибка"}</div>
-                      <button onClick={() => { setNewT(p => ({...p, description: aiData.res})); setAiModal(false); toast("Вставлено в заметки"); }} className="w-full bg-black text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDownToLine size={18} /> Вставить в описание</button></div>
+                      <button onClick={() => { setNewT(p => ({...p, description: aiData.res})); setAiModal(false); toast("Вставлено в заметки"); }} className="w-full bg-black text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={18} /> Вставить в описание</button></div>
                   )}
               </div>
           </div>
