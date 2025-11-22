@@ -326,6 +326,10 @@ const MainApp = () => {
   const [templateManager, setTemplateManager] = useState(false);
   const [templatesPicker, setTemplatesPicker] = useState(false);
   const [actionPicker, setActionPicker] = useState(false);
+  
+  // --- FIXED MISSING STATE ---
+  const [listPicker, setListPicker] = useState(false);
+  
   const [editingId, setEditingId] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -604,7 +608,7 @@ const MainApp = () => {
                           <SwipeableListItem 
                               key={l.id} 
                               list={l} 
-                              onEdit={(lst) => actions.openListModal(lst)} 
+                              onEdit={(lstId) => actions.openListModal(lstId)} 
                               onDelete={(id) => { setEditingListId(id); actions.deleteList(id); }}
                           />
                       ))}
