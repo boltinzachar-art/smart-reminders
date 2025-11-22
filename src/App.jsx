@@ -6,7 +6,7 @@ import {
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
   Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles, Settings,
-  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, Save
+  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, Folder
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -102,12 +102,54 @@ const performAction = (e, task, showToast) => {
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
-// --- SMART CARD COMPONENT ---
+// --- COMPONENTS ---
+
+const SwipeableListItem = ({ list, onEdit, onDelete }) => {
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const touchStartX = useRef(0);
+  const isSwiping = useRef(false);
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+    isSwiping.current = false;
+  };
+
+  const handleTouchMove = (e) => {
+    const currentX = e.touches[0].clientX;
+    const diff = currentX - touchStartX.current;
+    if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } 
+    else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isSwiping.current) return;
+    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
+    isSwiping.current = false;
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-xl mb-2">
+      <div className="absolute inset-y-0 right-0 w-[70px] bg-red-500 flex items-center justify-center text-white z-0 rounded-r-xl">
+          <button className="w-full h-full flex items-center justify-center" onClick={() => onDelete(list.id)}><Trash2 size={20}/></button>
+      </div>
+      <div 
+        style={{ transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' }}
+        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list.id); }}
+        className="relative z-10 bg-white p-4 flex items-center gap-3 active:bg-gray-50 transition-colors rounded-xl shadow-sm"
+      >
+        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
+        <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
+        <ChevronRight size={16} className="text-gray-300" />
+      </div>
+    </div>
+  );
+};
+
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
   
-  // Свайп логика
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
   const isSwiping = useRef(false);
@@ -228,7 +270,6 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
-// --- SCHEDULED VIEW (FIXED REFERENCE ERROR) ---
 const ScheduledView = ({ tasks, actions, onEdit }) => {
     const sections = useMemo(() => {
       const today = new Date(); today.setHours(0,0,0,0);
@@ -263,49 +304,6 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
             ))}
         </div>
     );
-};
-
-// --- SWIPEABLE LIST ITEM (FOR SETTINGS) ---
-const SwipeableListItem = ({ list, onEdit, onDelete }) => {
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const touchStartX = useRef(0);
-  const isSwiping = useRef(false);
-
-  const handleTouchStart = (e) => {
-    touchStartX.current = e.touches[0].clientX;
-    isSwiping.current = false;
-  };
-
-  const handleTouchMove = (e) => {
-    const currentX = e.touches[0].clientX;
-    const diff = currentX - touchStartX.current;
-    if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } 
-    else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; }
-  };
-
-  const handleTouchEnd = () => {
-    if (!isSwiping.current) return;
-    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
-    isSwiping.current = false;
-  };
-
-  return (
-    <div className="relative overflow-hidden rounded-xl mb-2">
-      <div className="absolute inset-y-0 right-0 w-[70px] bg-red-500 flex items-center justify-center text-white z-0 rounded-r-xl">
-          <button className="w-full h-full flex items-center justify-center" onClick={() => onDelete(list.id)}><Trash2 size={20}/></button>
-      </div>
-      <div 
-        style={{ transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' }}
-        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list.id); }}
-        className="relative z-10 bg-white p-4 flex items-center gap-3 active:bg-gray-50 transition-colors rounded-xl shadow-sm"
-      >
-        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
-        <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
-        <ChevronRight size={16} className="text-gray-300" />
-      </div>
-    </div>
-  );
 };
 
 const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (<button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform"><div className="flex justify-between w-full"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}><Icon size={18} className="text-white" /></div><span className="text-2xl font-bold text-black">{count || 0}</span></div><span className="text-gray-500 font-medium text-[15px] self-start">{title}</span></button>);
@@ -440,6 +438,7 @@ const MainApp = () => {
 
   const filteredTasks = useMemo(() => {
     let res = tasks;
+    // GLOBAL SEARCH
     if (search) {
         const l = search.toLowerCase();
         return tasks.filter(t => 
