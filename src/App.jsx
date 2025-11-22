@@ -4,7 +4,8 @@ import WebApp from '@twa-dev/sdk';
 import { 
   Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
-  Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, Check, X, Wand2, Loader2, Copy, AlertTriangle
+  Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
+  Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDownToLine
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -12,7 +13,6 @@ import { CSS } from '@dnd-kit/utilities';
 
 // --- 1. SYSTEM COMPONENTS ---
 
-// Уведомления (Toast) вместо alert
 const ToastContext = createContext();
 const ToastProvider = ({ children }) => {
   const [msg, setMsg] = useState(null);
@@ -33,7 +33,6 @@ const ToastProvider = ({ children }) => {
 };
 const useToast = () => useContext(ToastContext);
 
-// Защита от белого экрана смерти
 class ErrorBoundary extends React.Component {
   state = { hasError: false };
   static getDerivedStateFromError(error) { return { hasError: true }; }
@@ -43,7 +42,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// --- 2. HELPER FUNCTIONS ---
+// --- 2. UI COMPONENTS ---
 
 const IOSSwitch = ({ checked, onChange }) => (
   <button onClick={() => onChange(!checked)} className={`w-[51px] h-[31px] rounded-full p-0.5 transition-colors duration-300 focus:outline-none ${checked ? 'bg-[#34C759]' : 'bg-[#E9E9EA]'}`}>
@@ -51,43 +50,7 @@ const IOSSwitch = ({ checked, onChange }) => (
   </button>
 );
 
-const calculateNextRun = (current, freq) => {
-  if (!current) return null;
-  const d = new Date(current);
-  if (freq === 'daily') d.setDate(d.getDate() + 1);
-  if (freq === 'weekly') d.setDate(d.getDate() + 7);
-  if (freq === 'monthly') d.setMonth(d.getMonth() + 1);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-};
-
-const formatTime = (dateStr) => {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-};
-
-// --- 3. UI COMPONENTS ---
-
-const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
-  <button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform">
-    <div className="flex justify-between w-full">
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}><Icon size={18} className="text-white" /></div>
-      <span className="text-2xl font-bold text-black">{count || 0}</span>
-    </div>
-    <span className="text-gray-500 font-medium text-[15px] self-start">{title}</span>
-  </button>
-);
-
-const UserListItem = ({ list, count, onClick }) => (
-  <div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
-    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
-    <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
-    <span className="text-gray-400 text-[15px]">{count || 0}</span>
-    <ChevronRight size={16} className="text-gray-300" />
-  </div>
-);
-
-const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit, onAiGenerate }) => {
+const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
   const timerRef = useRef(null);
@@ -137,12 +100,14 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
       <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center gap-1">
            {task.priority > 0 && <span className="text-blue-600 font-bold text-[17px] mr-1">{'!'.repeat(task.priority)}</span>}
-           <div className={`text-[17px] leading-tight break-words transition-colors ${task.completed || isCompleting ? 'text-gray-400' : 'text-black'}`}>{task.title}</div>
+           <div className={`text-[17px] leading-tight break-words ${task.completed || isCompleting ? 'text-gray-400' : 'text-black'}`}>{task.title}</div>
            {task.is_flagged && <Flag size={14} className="text-orange-500 fill-orange-500 ml-1" />}
         </div>
         {task.description && <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>}
         <div className="flex items-center flex-wrap gap-2 mt-1.5">
-          {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run)}</span>}
+          {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{
+             new Date(task.next_run).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+          }</span>}
           {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium"><RefreshCw size={10} /> {task.frequency}</span>}
           {task.type !== 'reminder' && (
             <button onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); 
@@ -156,7 +121,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
       </div>
       {!selectionMode && !viewMode.includes('trash') && (
           <div className="flex gap-1">
-             <button onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onAiGenerate(task); }} className="text-purple-500 p-1 hover:bg-purple-50 rounded-full"><Wand2 size={20} /></button>
+             {/* Иконка ИИ УБРАНА отсюда */}
              <button onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(task); }} className="text-gray-400 p-1 hover:bg-gray-100 rounded-full"><MoreHorizontal size={20} /></button>
           </div>
       )}
@@ -164,48 +129,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
-const ScheduledView = ({ tasks, actions, onEdit, onAiGenerate }) => {
-  const sections = useMemo(() => {
-    const today = new Date(); today.setHours(0,0,0,0);
-    const result = [];
-    const overdue = tasks.filter(t => t.next_run && new Date(t.next_run) < today);
-    if (overdue.length > 0) result.push({ title: 'Просрочено', data: overdue, isOverdue: true });
-
-    for (let i = 0; i <= 14; i++) {
-        const d = new Date(today); d.setDate(today.getDate() + i);
-        const dayStart = d.getTime(); const dayEnd = dayStart + 86400000;
-        const dayTasks = tasks.filter(t => {
-            if (!t.next_run) return false;
-            const tTime = new Date(t.next_run).getTime();
-            return tTime >= dayStart && tTime < dayEnd;
-        });
-        let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
-        if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
-        result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
-    }
-    const futureStart = new Date(today); futureStart.setDate(today.getDate() + 15);
-    const futureTasks = tasks.filter(t => t.next_run && new Date(t.next_run) >= futureStart);
-    if (futureTasks.length > 0) {
-        result.push({ title: 'Позже', data: futureTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)) });
-    }
-    return result;
-  }, [tasks]);
-
-  return (
-    <div className="pb-40">
-        {sections.map((section, idx) => (
-            <div key={idx} className={`mb-2 ${section.isCompact ? 'opacity-50' : ''}`}>
-                <div className={`px-4 py-2 font-bold text-lg flex justify-between ${section.isOverdue ? 'text-red-500' : 'text-black'} ${section.isCompact ? 'text-sm py-1' : ''}`}>
-                    <span>{section.title}</span>
-                </div>
-                {!section.isCompact && <div className="px-4 space-y-2">{section.data.map(task => <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} onAiGenerate={onAiGenerate} />)}</div>}
-            </div>
-        ))}
-    </div>
-  );
-};
-
-// --- 4. MAIN LOGIC ---
+// --- 3. MAIN LOGIC ---
 
 const MainApp = () => {
   const toast = useToast();
@@ -217,12 +141,14 @@ const MainApp = () => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   
+  // Modals
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
   const [aiModal, setAiModal] = useState(false);
   const [aiData, setAiData] = useState({ loading: false, res: '' });
   const [editingId, setEditingId] = useState(null);
 
+  // New Task Form
   const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
@@ -261,6 +187,7 @@ const MainApp = () => {
     fetchData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
 
+  // Actions
   const actions = {
     saveTask: async () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
@@ -375,13 +302,17 @@ const MainApp = () => {
     }
   };
 
-  const handleAi = async (task) => {
+  // AI FUNCTION - Uses current form data
+  const handleAiGen = async () => {
+      if (!newT.title) return toast("Напишите название для ИИ", "error");
       setAiModal(true); setAiData({ loading: true, res: '' });
       try {
-          const { data, error } = await supabase.functions.invoke('ai-assistant', { body: { taskTitle: task.title, taskDescription: task.description, type: task.type } });
+          const { data, error } = await supabase.functions.invoke('ai-assistant', { 
+              body: { taskTitle: newT.title, taskDescription: newT.description, type: newT.type } 
+          });
           if (error) throw error;
           setAiData({ loading: false, res: data.result });
-      } catch (e) { setAiData({ loading: false, res: 'Ошибка AI' }); }
+      } catch (e) { setAiData({ loading: false, res: 'Ошибка AI. Проверьте сеть.' }); }
   };
 
   const openEditModal = (task) => {
@@ -481,7 +412,7 @@ const MainApp = () => {
               <div className="flex justify-end"><button onClick={() => setListModal(true)} className="text-blue-600 font-medium text-lg p-2">Добавить список</button></div>
             </>
           ) : (
-              <div className="space-y-2">{filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal} onAiGenerate={handleAi}/>)}</div>
+              <div className="space-y-2">{filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}</div>
           )}
         </div>
       )}
@@ -502,14 +433,14 @@ const MainApp = () => {
                  <div className="pb-20">{scheduledSections.map((s,i) => (
                     <div key={i} className={`mb-2 ${s.compact?'opacity-50':''}`}>
                         <div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.compact?'text-sm py-1':''}`}><span>{s.title}</span></div>
-                        {!s.compact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={openEditModal} onAiGenerate={handleAi}/>)}</div>}
+                        {!s.compact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={openEditModal} />)}</div>}
                     </div>
                  ))}</div>
              ) : (
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
                     <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
                         {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
-                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal} onAiGenerate={handleAi}/>
+                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
                         ))}
                     </SortableContext>
                  </DndContext>
@@ -531,7 +462,7 @@ const MainApp = () => {
         </div>
       )}
 
-      {/* TASK MODAL */}
+      {/* TASK MODAL (IOS) */}
       {taskModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
            <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[90vh] flex flex-col shadow-2xl animate-slide-up-ios">
@@ -553,6 +484,14 @@ const MainApp = () => {
                     <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Приоритет</span><div className="flex items-center gap-1"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.priority} onChange={e => setNewT({...newT, priority: parseInt(e.target.value)})}>{['Нет','Низкий','Средний','Высокий'].map((v,i)=><option key={i} value={i}>{v}</option>)}</select><span className="absolute right-9 text-gray-500">{['Нет','!','!!','!!!'][newT.priority]}</span><ChevronRight size={16} className="text-gray-400 absolute right-3" /></div></div>
                     <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Действие</span><div className="flex items-center gap-1 relative"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.type} onChange={e => setNewT({...newT, type: e.target.value})}><option value="reminder">Нет</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option><option value="web_search">Поиск</option></select><ChevronRight size={16} className="text-gray-400 absolute right-0" /></div></div>
                  </div>
+              </div>
+              {/* NEW BOTTOM BAR WITH AI */}
+              <div className="flex justify-between items-center px-6 py-4 bg-[#F2F2F7] pb-8">
+                  <button onClick={() => setHasDate(!hasDate)} className="text-blue-600 active:opacity-50 transition-opacity"><CalendarIcon size={28} /></button>
+                  <button onClick={() => setNewT({...newT, priority: newT.priority === 3 ? 0 : newT.priority + 1})} className={`transition-colors ${newT.priority > 0 ? 'text-blue-600' : 'text-blue-600'}`}><Flag size={28} className={newT.priority > 0 ? 'fill-blue-600' : ''} /></button>
+                  <button onClick={() => { /* Camera Logic */ }} className="text-blue-600 active:opacity-50 transition-opacity"><Camera size={28} /></button>
+                  {/* AI MAGIC BUTTON */}
+                  <button onClick={handleAiGen} className="text-purple-600 active:scale-90 transition-transform bg-purple-100 p-2 rounded-full"><Wand2 size={24} /></button>
               </div>
            </div>
         </div>
@@ -577,7 +516,8 @@ const MainApp = () => {
                   {aiData.loading ? (
                       <div className="flex flex-col items-center py-8 text-gray-500"><Loader2 className="animate-spin mb-2" size={32} /><p>Думаю...</p></div>
                   ) : (
-                      <div className="space-y-4"><div className="bg-gray-50 p-4 rounded-xl text-gray-800 text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto border border-gray-100">{aiData.res || "Ошибка"}</div><button onClick={() => { navigator.clipboard.writeText(aiData.res); setAiModal(false); toast("Скопировано"); }} className="w-full bg-black text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><Copy size={18} /> Копировать</button></div>
+                      <div className="space-y-4"><div className="bg-gray-50 p-4 rounded-xl text-gray-800 text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto border border-gray-100">{aiData.res || "Ошибка"}</div>
+                      <button onClick={() => { setNewT(p => ({...p, description: aiData.res})); setAiModal(false); toast("Вставлено в заметки"); }} className="w-full bg-black text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDownToLine size={18} /> Вставить в описание</button></div>
                   )}
               </div>
           </div>
