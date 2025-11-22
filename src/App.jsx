@@ -150,6 +150,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
   
+  // Свайп логика
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
   const isSwiping = useRef(false);
@@ -177,7 +178,11 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
   const handleTouchEnd = () => {
     if (!isSwiping.current) return;
-    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
+    if (swipeOffset < -35) {
+        setSwipeOffset(-70);
+    } else {
+        setSwipeOffset(0);
+    }
     isSwiping.current = false;
   };
 
@@ -605,7 +610,7 @@ const MainApp = () => {
                           <SwipeableListItem 
                               key={l.id} 
                               list={l} 
-                              onEdit={(lstId) => actions.openListModal(lstId)} 
+                              onEdit={(lst) => actions.openListModal(lst.id)} 
                               onDelete={(id) => { setEditingListId(id); actions.deleteList(id); }}
                           />
                       ))}
@@ -724,7 +729,20 @@ const MainApp = () => {
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
               <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios max-h-[60vh] overflow-y-auto">
                   <h3 className="text-lg font-bold text-center mb-4 text-black">Выберите шаблон</h3>
-                  <div className="space-y-2">{templates.length === 0 && <div className="text-center text-gray-400">Нет шаблонов</div>}{templates.map(t => (<button key={t.id} onClick={() => actions.applyTemplate(t)} className="w-full bg-gray-50 p-3 rounded-xl text-left hover:bg-gray-100 active:scale-95 transition"><div className="font-bold text-black">{t.title}</div><div className="text-xs text-gray-500 line-clamp-1">{t.description}</div></button>))}</div>
+                  <div className="space-y-2">
+                      {templates.length === 0 && <div className="text-center text-gray-400">Нет шаблонов</div>}
+                      {templates.map(t => (
+                          <div key={t.id} className="group w-full bg-gray-50 rounded-xl flex items-center pr-2 overflow-hidden transition-transform active:scale-[0.98]">
+                              <button onClick={() => actions.applyTemplate(t)} className="flex-1 p-3 text-left focus:outline-none">
+                                  <div className="font-bold text-black">{t.title}</div>
+                                  <div className="text-xs text-gray-500 line-clamp-1">{t.description}</div>
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); actions.deleteTemplate(t.id); }} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                                  <Trash2 size={18} />
+                              </button>
+                          </div>
+                      ))}
+                  </div>
                   <button onClick={() => setTemplatesPicker(false)} className="w-full mt-4 py-3 text-gray-500 font-medium">Отмена</button>
               </div>
           </div>
