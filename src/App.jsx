@@ -4,8 +4,8 @@ import WebApp from '@twa-dev/sdk';
 import { 
   Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
-  Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
-  Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown
+  Flag, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
+  Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -42,35 +42,12 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// --- 2. UI COMPONENTS (ВОТ ОНИ ВЕРНУЛИСЬ!) ---
+// --- 2. UI COMPONENTS ---
 
 const IOSSwitch = ({ checked, onChange }) => (
   <button onClick={() => onChange(!checked)} className={`w-[51px] h-[31px] rounded-full p-0.5 transition-colors duration-300 focus:outline-none ${checked ? 'bg-[#34C759]' : 'bg-[#E9E9EA]'}`}>
     <div className={`w-[27px] h-[27px] bg-white rounded-full shadow-sm transition-transform duration-300 ${checked ? 'translate-x-[20px]' : 'translate-x-0'}`} />
   </button>
-);
-
-const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
-  <button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform">
-    <div className="flex justify-between w-full">
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}>
-        <Icon size={18} className="text-white" />
-      </div>
-      <span className="text-2xl font-bold text-black">{count || 0}</span>
-    </div>
-    <span className="text-gray-500 font-medium text-[15px] self-start">{title}</span>
-  </button>
-);
-
-const UserListItem = ({ list, count, onClick }) => (
-  <div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
-    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-      <ListIcon size={16} className="text-blue-600" />
-    </div>
-    <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
-    <span className="text-gray-400 text-[15px]">{count || 0}</span>
-    <ChevronRight size={16} className="text-gray-300" />
-  </div>
 );
 
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
@@ -151,6 +128,70 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
+const ScheduledView = ({ tasks, actions, onEdit }) => {
+  const sections = useMemo(() => {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const result = [];
+    const overdue = tasks.filter(t => t.next_run && new Date(t.next_run) < today);
+    if (overdue.length > 0) result.push({ title: 'Просрочено', data: overdue, isOverdue: true });
+
+    for (let i = 0; i <= 14; i++) {
+        const d = new Date(today); d.setDate(today.getDate() + i);
+        const dayStart = d.getTime(); const dayEnd = dayStart + 86400000;
+        const dayTasks = tasks.filter(t => {
+            if (!t.next_run) return false;
+            const tTime = new Date(t.next_run).getTime();
+            return tTime >= dayStart && tTime < dayEnd;
+        });
+        let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
+        if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
+        result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
+    }
+    const futureStart = new Date(today); futureStart.setDate(today.getDate() + 15);
+    const futureTasks = tasks.filter(t => t.next_run && new Date(t.next_run) >= futureStart);
+    if (futureTasks.length > 0) {
+        result.push({ title: 'Позже', data: futureTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)) });
+    }
+    return result;
+  }, [tasks]);
+
+  return (
+    <div className="pb-40">
+        {sections.map((section, idx) => (
+            <div key={idx} className={`mb-2 ${section.isCompact ? 'opacity-50' : ''}`}>
+                <div className={`px-4 py-2 font-bold text-lg flex justify-between ${section.isOverdue ? 'text-red-500' : 'text-black'} ${section.isCompact ? 'text-sm py-1' : ''}`}>
+                    <span>{section.title}</span>
+                </div>
+                {!section.isCompact && <div className="px-4 space-y-2">{section.data.map(task => <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}
+            </div>
+        ))}
+    </div>
+  );
+};
+
+const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
+  <button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform">
+    <div className="flex justify-between w-full">
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}>
+        <Icon size={18} className="text-white" />
+      </div>
+      <span className="text-2xl font-bold text-black">{count || 0}</span>
+    </div>
+    <span className="text-gray-500 font-medium text-[15px] self-start">{title}</span>
+  </button>
+);
+
+const UserListItem = ({ list, count, onClick }) => (
+  <div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
+    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+      <ListIcon size={16} className="text-blue-600" />
+    </div>
+    <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
+    <span className="text-gray-400 text-[15px]">{count || 0}</span>
+    <ChevronRight size={16} className="text-gray-300" />
+  </div>
+);
+
 // --- 3. MAIN LOGIC ---
 
 const MainApp = () => {
@@ -165,15 +206,19 @@ const MainApp = () => {
   
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
-  const [aiModal, setAiModal] = useState(false);
-  const [aiData, setAiData] = useState({ loading: false, res: '' });
   const [editingId, setEditingId] = useState(null);
-
+  
   const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
   const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
   const [timeVal, setTimeVal] = useState(new Date().toTimeString().slice(0, 5));
+  
+  // AI State
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState('');
+
   const [newListTitle, setNewListTitle] = useState('');
   const [search, setSearch] = useState('');
 
@@ -207,7 +252,6 @@ const MainApp = () => {
     fetchData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
 
-  // Logic Actions
   const actions = {
     saveTask: async () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
@@ -319,24 +363,33 @@ const MainApp = () => {
              if (isOnline) await supabase.from('tasks').update({ is_deleted: true }).in('id', ids);
         }
         toast("Список очищен");
+    },
+    generateAi: async () => {
+        if (!newT.title) { toast("Сначала введите название", "error"); return; }
+        setAiLoading(true);
+        try {
+            const { data, error } = await supabase.functions.invoke('ai-assistant', {
+                body: { 
+                    taskTitle: newT.title, 
+                    taskDescription: newT.description, 
+                    type: newT.type,
+                    customInstruction: aiInstruction 
+                }
+            });
+            if (error) throw error;
+            setAiResult(data.result);
+        } catch (e) {
+            toast("Ошибка AI", "error");
+        } finally {
+            setAiLoading(false);
+        }
     }
-  };
-
-  const handleAiGen = async () => {
-      if (!newT.title) return toast("Напишите название для ИИ", "error");
-      setAiModal(true); setAiData({ loading: true, res: '' });
-      try {
-          const { data, error } = await supabase.functions.invoke('ai-assistant', { 
-              body: { taskTitle: newT.title, taskDescription: newT.description, type: newT.type } 
-          });
-          if (error) throw error;
-          setAiData({ loading: false, res: data.result });
-      } catch (e) { setAiData({ loading: false, res: 'Ошибка AI. Проверьте сеть.' }); }
   };
 
   const openEditModal = (task) => {
       setEditingId(task.id);
       setNewT({ title: task.title, description: task.description, type: task.type || 'reminder', frequency: task.frequency || 'once', priority: task.priority || 0, is_flagged: task.is_flagged || false });
+      setAiInstruction(''); setAiResult(''); // Reset AI
       if (task.next_run) {
           const d = new Date(task.next_run);
           setHasDate(true); setDateVal(d.toISOString().slice(0, 10));
@@ -350,13 +403,14 @@ const MainApp = () => {
       setTaskModal(false); setEditingId(null);
       setNewT({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
       setHasDate(false); setHasTime(false);
+      setAiInstruction(''); setAiResult('');
   };
 
   const filteredTasks = useMemo(() => {
     let res = tasks;
     if (search) {
         const l = search.toLowerCase();
-        res = res.filter(t => t.title.toLowerCase().includes(l) || (t.next_run && t.next_run.includes(l)));
+        res = res.filter(t => t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(l)));
     }
     if (view === 'trash') return res.filter(t => t.is_deleted);
     res = res.filter(t => !t.is_deleted);
@@ -449,17 +503,12 @@ const MainApp = () => {
 
           <div className="flex-1 px-4 pb-36 overflow-y-auto space-y-3">
              {view === 'upcoming' && !selectionMode ? (
-                 <div className="pb-20">{scheduledSections.map((s,i) => (
-                    <div key={i} className={`mb-2 ${s.compact?'opacity-50':''}`}>
-                        <div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.compact?'text-sm py-1':''}`}><span>{s.title}</span></div>
-                        {!s.compact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={openEditModal} />)}</div>}
-                    </div>
-                 ))}</div>
+                 <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal} onAiGenerate={handleAiGen} />
              ) : (
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
                     <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
                         {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
-                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
+                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal} />
                         ))}
                     </SortableContext>
                  </DndContext>
@@ -484,7 +533,7 @@ const MainApp = () => {
       {/* TASK MODAL */}
       {taskModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
-           <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[90vh] flex flex-col shadow-2xl animate-slide-up-ios">
+           <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[95vh] flex flex-col shadow-2xl animate-slide-up-ios">
               <div className="flex justify-between items-center px-4 py-4 bg-[#F2F2F7] rounded-t-2xl border-b border-gray-200/50">
                  <button onClick={closeModal} className="text-blue-600 text-[17px]">Отмена</button>
                  <span className="font-bold text-black text-[17px]">{editingId ? 'Правка' : 'Новое'}</span>
@@ -492,6 +541,20 @@ const MainApp = () => {
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-6">
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm"><input className="w-full p-4 text-[17px] border-b border-gray-100 outline-none placeholder-gray-400 text-black" placeholder="Название" value={newT.title} onChange={e => setNewT({...newT, title: e.target.value})} autoFocus /><textarea className="w-full p-4 text-[15px] outline-none resize-none h-24 placeholder-gray-400 text-black" placeholder="Заметки" value={newT.description} onChange={e => setNewT({...newT, description: e.target.value})} /></div>
+                 
+                 {/* AI BLOCK */}
+                 <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
+                    <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> Текст действия (AI)</div>
+                    <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
+                    <button onClick={actions.generateAi} disabled={aiLoading} className="w-full bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
+                    {aiResult && (
+                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in">
+                            <div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div>
+                            <button onClick={() => setNewT({...newT, description: aiResult})} className="w-full bg-black text-white text-sm font-bold py-2 rounded-lg flex items-center justify-center gap-2"><ArrowDown size={14}/> Вставить в заметки</button>
+                        </div>
+                    )}
+                 </div>
+
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
                     <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center text-white"><CalendarIcon size={18} fill="white" /></div><span className="text-[17px] text-black">Дата</span></div><IOSSwitch checked={hasDate} onChange={setHasDate} /></div>
                     {hasDate && <div className="bg-white px-4 pb-3 animate-fade-in-ios"><input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" /></div>}
@@ -501,49 +564,4 @@ const MainApp = () => {
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
                     <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-orange-500 flex items-center justify-center text-white"><Flag size={18} fill="white" /></div><span className="text-[17px] text-black">Флаг</span></div><IOSSwitch checked={newT.is_flagged} onChange={v => setNewT({...newT, is_flagged: v})} /></div>
                     <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Приоритет</span><div className="flex items-center gap-1"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.priority} onChange={e => setNewT({...newT, priority: parseInt(e.target.value)})}>{['Нет','Низкий','Средний','Высокий'].map((v,i)=><option key={i} value={i}>{v}</option>)}</select><span className="absolute right-9 text-gray-500">{['Нет','!','!!','!!!'][newT.priority]}</span><ChevronRight size={16} className="text-gray-400 absolute right-3" /></div></div>
-                    <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Действие</span><div className="flex items-center gap-1 relative"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.type} onChange={e => setNewT({...newT, type: e.target.value})}><option value="reminder">Нет</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option><option value="web_search">Поиск</option></select><ChevronRight size={16} className="text-gray-400 absolute right-0" /></div></div>
-                 </div>
-              </div>
-              <div className="flex justify-between items-center px-6 py-4 bg-[#F2F2F7] pb-8">
-                  <button onClick={() => setHasDate(!hasDate)} className="text-blue-600 active:opacity-50 transition-opacity"><CalendarIcon size={28} /></button>
-                  <button onClick={() => setNewT({...newT, priority: newT.priority === 3 ? 0 : newT.priority + 1})} className={`transition-colors ${newT.priority > 0 ? 'text-blue-600' : 'text-blue-600'}`}><Flag size={28} className={newT.priority > 0 ? 'fill-blue-600' : ''} /></button>
-                  <button onClick={() => { /* Camera Logic */ }} className="text-blue-600 active:opacity-50 transition-opacity"><Camera size={28} /></button>
-                  <button onClick={handleAiGen} className="text-purple-600 active:scale-90 transition-transform bg-purple-100 p-2 rounded-full"><Wand2 size={24} /></button>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {listModal && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-           <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios">
-              <h3 className="text-lg font-bold text-center mb-4">Новый список</h3>
-              <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
-              <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
-              <div className="flex gap-2"><button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button><button onClick={actions.createList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button></div>
-           </div>
-        </div>
-      )}
-
-      {aiModal && (
-          <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 animate-fade-in-ios">
-              <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl relative animate-zoom-in-ios">
-                  <button onClick={() => setAiModal(false)} className="absolute top-4 right-4 text-gray-400"><X size={20}/></button>
-                  <h3 className="text-xl font-bold text-black mb-4 flex items-center gap-2"><Wand2 className="text-purple-500"/> AI Ассистент</h3>
-                  {aiData.loading ? (
-                      <div className="flex flex-col items-center py-8 text-gray-500"><Loader2 className="animate-spin mb-2" size={32} /><p>Думаю...</p></div>
-                  ) : (
-                      <div className="space-y-4"><div className="bg-gray-50 p-4 rounded-xl text-gray-800 text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto border border-gray-100">{aiData.res || "Ошибка"}</div><button onClick={() => { setNewT(p => ({...p, description: aiData.res})); setAiModal(false); toast("Вставлено в заметки"); }} className="w-full bg-black text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={18} /> Вставить в описание</button></div>
-                  )}
-              </div>
-          </div>
-      )}
-    </div>
-  );
-};
-
-export default () => (
-  <React.StrictMode>
-    <ErrorBoundary><ToastProvider><MainApp /></ToastProvider></ErrorBoundary>
-  </React.StrictMode>
-);
+                    <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Действие</span><div className="flex items-center gap-1 relative"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.type} onChange={e => setNewT({...newT, type: e.target.value})

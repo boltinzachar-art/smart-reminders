@@ -6,76 +6,57 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // 1. Разрешаем браузеру делать запросы (CORS)
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    // 2. Получаем данные от React-приложения
-    const { taskTitle, taskDescription, type } = await req.json()
-    
-    // 3. Берем ключ (убедись, что ты его добавил в секреты!)
+    // Мы принимаем дополнительное поле customInstruction
+    const { taskTitle, taskDescription, type, customInstruction } = await req.json()
     const apiKey = Deno.env.get('GOOGLE_API_KEY')
-    if (!apiKey) {
-      throw new Error('Не найден ключ GOOGLE_API_KEY в секретах Supabase')
-    }
     
-    // 4. Формируем инструкцию для ИИ
-    let prompt = ""
+    // Базовая инструкция
+    let prompt = `Задача: "${taskTitle}".\nДетали: "${taskDescription || ''}".\n`
     
-    if (type === 'web_search') {
-        prompt = `Задача пользователя: "${taskTitle}". 
-        Детали: "${taskDescription || 'нет'}". 
-        Твоя цель: Помочь найти информацию.
-        Напиши 3 самых эффективных поисковых запроса для Google, чтобы решить эту задачу.
-        И дай один короткий совет эксперта, на что обратить внимание.`
-    } else {
-        const action = type === 'whatsapp' ? 'WhatsApp' : 'Email';
-        prompt = `Твоя роль: Личный бизнес-ассистент.
-        Задача: Написать текст сообщения для отправки в ${action}.
-        Тема: "${taskTitle}".
-        Детали: "${taskDescription || 'нет'}".
-        
-        Требования:
-        1. Стиль: Вежливый, деловой, лаконичный.
-        2. Без воды (не пиши "Вот ваш текст", "Тема письма:").
-        3. Сразу готовый текст, который можно скопировать и отправить.`
+    if (customInstruction) {
+        prompt += `Дополнительное уточнение от пользователя: "${customInstruction}".\n`
     }
 
-    // 5. Отправляем запрос к Gemini 2.0 Flash
+    // Жесткая инструкция по стилю (System Prompt внутри User Prompt для Gemini)
+    const styleGuide = `
+    ВАЖНО: Твоя задача — написать готовый текст сообщения (для WhatsApp или Email).
+    Стиль: 
+    1. Максимально естественный, обычный, человеческий.
+    2. НЕ вычурный, без канцеляризмов, без лишнего официоза.
+    3. Если это бытовая задача (жильцы, семья) — пиши просто и вежливо.
+    4. Если это бизнес (директор, партнеры) — пиши корректно, но без воды.
+    5. Пиши ТОЛЬКО текст сообщения. Никаких "Вот ваш вариант:" или кавычек.
+    `
+
+    if (type === 'web_search') {
+        prompt += "Напиши 3 конкретных поисковых запроса для Google, чтобы решить эту задачу."
+    } else {
+        prompt += styleGuide
+    }
+
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: prompt }]
-          }]
-        }),
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
       }
     )
 
     const data = await response.json()
     
     if (data.error) {
-      console.error("Gemini API Error:", data.error)
-      throw new Error(data.error.message || "Ошибка API Google")
+        console.error("Gemini API Error:", data.error)
+        throw new Error(data.error.message)
     }
-    
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "ИИ не вернул текст. Попробуйте позже."
 
-    // 6. Отправляем ответ обратно в приложение
-    return new Response(JSON.stringify({ result: text }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Не удалось получить ответ."
 
+    return new Response(JSON.stringify({ result: text }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (error) {
-    console.error("Function Error:", error)
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 })
