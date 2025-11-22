@@ -67,17 +67,15 @@ const formatTime = (dateStr) => {
   return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 };
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ ДЕЙСТВИЯ (Только описание в теле сообщения)
 const performAction = (e, task) => {
   e.stopPropagation();
   const title = encodeURIComponent(task.title);
-  // Берем только описание для тела сообщения
   const body = encodeURIComponent(task.description || '');
   
   const actions = {
-    email: `mailto:?subject=${title}&body=${body}`, // Тема = Заголовок, Тело = Описание
-    whatsapp: `https://wa.me/?text=${body}`,        // WhatsApp = Только описание
-    web_search: `https://www.google.com/search?q=${title}` // Поиск = Заголовок
+    email: `mailto:?subject=${title}&body=${body}`,
+    whatsapp: `https://wa.me/?text=${body}`,
+    web_search: `https://www.google.com/search?q=${title}`
   };
   
   if (actions[task.type]) window.open(actions[task.type]);
@@ -194,11 +192,13 @@ const MainApp = () => {
   // Modals
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
-  const [editingListId, setEditingListId] = useState(null); // ID редактируемого списка
-  const [aiModal, setAiModal] = useState(false);
-  const [aiData, setAiData] = useState({ loading: false, res: '' });
+  const [editingListId, setEditingListId] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  
+  // AI State (ИСПРАВЛЕНО: теперь это отдельные переменные)
   const [aiInstruction, setAiInstruction] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState('');
 
   const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
   const [hasDate, setHasDate] = useState(false);
@@ -264,16 +264,13 @@ const MainApp = () => {
       }
       closeModal();
     },
-    // --- LIST ACTIONS ---
     saveList: async () => {
       if (!newListTitle) return;
       if (editingListId) {
-          // RENAME
           setLists(prev => prev.map(l => l.id === editingListId ? { ...l, title: newListTitle } : l));
           if (isOnline) await supabase.from('lists').update({ title: newListTitle }).eq('id', editingListId);
           toast("Переименовано");
       } else {
-          // CREATE
           const l = { title: newListTitle, telegram_user_id: userId, color: '#3B82F6' };
           const { data } = await supabase.from('lists').insert([l]).select();
           if (data) { setLists(p => [...p, data[0]]); toast("Список создан"); }
@@ -282,37 +279,20 @@ const MainApp = () => {
     },
     deleteList: async () => {
         if (!editingListId) return;
-        if (!confirm("Удалить список и все задачи в нем?")) return;
-        
-        // Удаляем задачи локально (или делаем их без списка, если логика такая, но обычно удаляют)
-        // Здесь удалим задачи
+        if (!confirm("Удалить список и все задачи?")) return;
         setTasks(prev => prev.filter(t => t.list_id !== editingListId));
         setLists(prev => prev.filter(l => l.id !== editingListId));
-        setView('home'); // Возврат на главную
-        setListModal(false);
-        setNewListTitle('');
-        setEditingListId(null);
-
-        if (isOnline) {
-            await supabase.from('lists').delete().eq('id', editingListId);
-            // Задачи удалятся каскадно или станут NULL, зависит от БД.
-            // Если в БД ON DELETE SET NULL, то они станут без списка. Если хотим удалить - нужен доп запрос.
-            // Для простоты пока оставим как в БД настроено.
-        }
+        setView('home'); setListModal(false); setNewListTitle(''); setEditingListId(null);
+        if (isOnline) await supabase.from('lists').delete().eq('id', editingListId);
         toast("Список удален");
     },
     openListModal: (listId = null) => {
         if (listId) {
             const list = lists.find(l => l.id === listId);
-            setNewListTitle(list.title);
-            setEditingListId(listId);
-        } else {
-            setNewListTitle('');
-            setEditingListId(null);
-        }
+            setNewListTitle(list.title); setEditingListId(listId);
+        } else { setNewListTitle(''); setEditingListId(null); }
         setListModal(true);
     },
-    // -------------------
     complete: async (task) => {
       const isRec = task.frequency !== 'once' && task.next_run;
       const nextDate = isRec ? (() => {
@@ -483,7 +463,6 @@ const MainApp = () => {
       return res;
   }, [filteredTasks, view]);
 
-  // Проверяем, находимся ли мы в кастомном списке (чтобы показать настройки)
   const isCustomList = !['home', 'today', 'upcoming', 'all', 'flagged', 'trash', 'completed'].includes(view);
 
   return (
@@ -541,14 +520,14 @@ const MainApp = () => {
                  <div className="pb-20">{scheduledSections.map((s,i) => (
                     <div key={i} className={`mb-2 ${s.compact?'opacity-50':''}`}>
                         <div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.compact?'text-sm py-1':''}`}><span>{s.title}</span></div>
-                        {!s.compact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={openEditModal} onAiGenerate={handleAiGen} />)}</div>}
+                        {!s.compact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={openEditModal} />)}</div>}
                     </div>
                  ))}</div>
              ) : (
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
                     <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
                         {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
-                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal} onAiGenerate={handleAiGen} />
+                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
                         ))}
                     </SortableContext>
                  </DndContext>
