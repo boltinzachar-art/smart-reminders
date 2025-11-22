@@ -6,7 +6,7 @@ import {
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
   Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles, Settings,
-  Zap, Edit3, Link as LinkIcon, MessageCircle, Mail, Phone
+  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, BookmarkPlus, Save
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -50,6 +50,25 @@ const IOSSwitch = ({ checked, onChange }) => (
     <div className={`w-[27px] h-[27px] bg-white rounded-full shadow-sm transition-transform duration-300 ${checked ? 'translate-x-[20px]' : 'translate-x-0'}`} />
   </button>
 );
+
+// ИКОНКИ ДЛЯ ТИПОВ
+const ACTION_ICONS = {
+    reminder: <span className="text-gray-400 text-xs">Нет</span>,
+    email: <Mail size={18} className="text-blue-500" />,
+    whatsapp: <MessageCircle size={18} className="text-green-500" />,
+    web_search: <Search size={18} className="text-orange-500" />,
+    copy: <Copy size={18} className="text-gray-500" />,
+    call: <Phone size={18} className="text-green-600" />
+};
+
+const ACTION_NAMES = {
+    reminder: 'Нет действия',
+    email: 'Email',
+    whatsapp: 'WhatsApp',
+    web_search: 'Поиск',
+    copy: 'Копировать',
+    call: 'Позвонить'
+};
 
 const performAction = (e, task, showToast) => {
   e.stopPropagation();
@@ -125,13 +144,8 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   else if (task.completed) circleClass += "bg-blue-500 border-blue-500";
   else circleClass += "border-gray-300 hover:border-blue-500 bg-transparent";
 
-  const ActionIcon = {
-      email: <Mail size={12} />,
-      whatsapp: <MessageCircle size={12} />,
-      web_search: <Search size={12} />,
-      copy: <Copy size={12} />,
-      call: <Phone size={12} />
-  }[task.type];
+  // Иконка действия
+  const actionIcon = ACTION_ICONS[task.type];
 
   return (
     <div ref={setNodeRef} style={style} onClick={(e) => selectionMode && onSelect(task.id)} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
@@ -165,9 +179,9 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
           {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium"><RefreshCw size={10} /> {task.frequency}</span>}
           
           {/* Кнопка действия */}
-          {task.type !== 'reminder' && ActionIcon && (
+          {task.type !== 'reminder' && actionIcon && (
             <button onPointerDown={e => e.stopPropagation()} onClick={(e) => performAction(e, task, toast)} className="ml-auto text-blue-600 text-xs font-bold flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded">
-                {ActionIcon} {task.type === 'whatsapp' ? 'WhatsApp' : task.type === 'email' ? 'Email' : task.type === 'copy' ? 'Скопировать' : task.type === 'call' ? 'Позвонить' : 'Открыть'}
+                {actionIcon} {ACTION_NAMES[task.type]}
             </button>
           )}
         </div>
@@ -237,19 +251,16 @@ const MainApp = () => {
   // Modals
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
-  const [templateManager, setTemplateManager] = useState(false); 
-  const [templatesPicker, setTemplatesPicker] = useState(false);
+  const [actionPicker, setActionPicker] = useState(false); // МЕНЮ ВЫБОРА ДЕЙСТВИЯ
   
   const [editingId, setEditingId] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
   
-  // AI State (ИСПРАВЛЕНО: отдельные переменные)
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState('');
   const [aiInstruction, setAiInstruction] = useState('');
 
   const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
-  const [newTemplate, setNewTemplate] = useState({ title: '', description: '', type: 'reminder' });
   
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
@@ -290,15 +301,6 @@ const MainApp = () => {
     fetchData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
 
-  const calculateNextRun = (current, freq) => {
-    if (!current) return null;
-    const d = new Date(current);
-    if (freq === 'daily') d.setDate(d.getDate() + 1);
-    if (freq === 'weekly') d.setDate(d.getDate() + 7);
-    if (freq === 'monthly') d.setMonth(d.getMonth() + 1);
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  };
-
   const actions = {
     saveTask: async () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
@@ -327,26 +329,35 @@ const MainApp = () => {
       closeModal();
     },
     saveTemplate: async () => {
-        if (!newT.title) return toast("Введите название", "error");
-        const template = { ...newT, telegram_user_id: userId };
+        // Сохраняем ТЕКУЩЕЕ состояние формы как шаблон
+        if (!newT.title) return toast("Введите название и описание", "error");
+        if (newT.type === 'reminder') return toast("Выберите тип действия", "error");
+        
+        const template = { 
+            title: newT.title, // Название шаблона берем из названия задачи
+            description: newT.description,
+            type: newT.type,
+            telegram_user_id: userId 
+        };
+        
         if (isOnline) {
             const { data } = await supabase.from('templates').insert([template]).select();
-            if (data) { setTemplates(p => [...p, data[0]]); toast("Шаблон сохранен"); }
+            if (data) { setTemplates(p => [...p, data[0]]); toast("Шаблон сохранен!"); }
         } else {
             toast("Нужен интернет", "error");
         }
     },
-    applyTemplate: (tmpl) => {
-        setNewT({
-            title: tmpl.title,
-            description: tmpl.description,
-            type: tmpl.type,
-            frequency: tmpl.frequency || 'once',
-            priority: tmpl.priority || 0,
-            is_flagged: tmpl.is_flagged || false
-        });
-        setTemplatesPicker(false);
-        toast("Применено");
+    applyAction: (type, description = '', title = '') => {
+        // Применяем действие (шаблон или базовое)
+        setNewT(prev => ({
+            ...prev,
+            type: type,
+            description: description || prev.description, // Если в шаблоне есть текст - берем его
+            title: title || prev.title
+        }));
+        setActionPicker(false);
+        // Если это был шаблон с текстом, уведомляем
+        if (description) toast("Шаблон применен");
     },
     deleteTemplate: async (id) => {
         if (!confirm("Удалить шаблон?")) return;
@@ -560,7 +571,7 @@ const MainApp = () => {
         <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
           <div className="flex justify-between items-center">
              <h2 className="text-xl font-bold text-black ml-1">Мои дела</h2>
-             <button onClick={() => setTemplateManager(true)} className="bg-gray-200 text-black font-bold px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 active:scale-95 transition"><Zap size={16}/> Шаблоны</button>
+             {/* NO TEMPLATE MANAGER ON HOME SCREEN - MOVED TO ACTION PICKER */}
           </div>
           
           <div className="relative bg-[#E3E3E8] rounded-xl flex items-center px-3 py-2">
@@ -596,6 +607,7 @@ const MainApp = () => {
         </div>
       )}
 
+      {/* --- LIST DETAIL --- */}
       {view !== 'home' && (
         <div className="flex-1 flex flex-col h-full animate-in slide-in-from-right-8 duration-300 relative">
           <div className="px-4 pt-2 pb-2 bg-[#F2F2F7] sticky top-0 z-20 flex items-center justify-between">
@@ -622,7 +634,7 @@ const MainApp = () => {
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
                     <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
                         {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
-                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal} />
+                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
                         ))}
                     </SortableContext>
                  </DndContext>
@@ -664,14 +676,13 @@ const MainApp = () => {
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div>
-                        <button onClick={() => setTemplatesPicker(true)} className="text-xs bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200"><Zap size={12}/> Шаблоны</button>
+                        {/* SAVE AS TEMPLATE BUTTON */}
+                        {newT.description && newT.type !== 'reminder' && (
+                            <button onClick={actions.saveTemplate} className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-md flex items-center gap-1 font-bold hover:bg-purple-200"><BookmarkPlus size={14}/> В шаблоны</button>
+                        )}
                     </div>
                     <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
-                    <div className="flex gap-2">
-                        <button onClick={actions.generateAi} disabled={aiLoading} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
-                        {/* SAVE AS TEMPLATE BTN */}
-                        <button onClick={actions.saveTemplate} className="px-3 bg-gray-100 text-gray-600 rounded-lg active:scale-95"><Zap size={20}/></button>
-                    </div>
+                    <button onClick={actions.generateAi} disabled={aiLoading} className="w-full bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
                     {aiResult && (
                         <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in">
                             <div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div>
@@ -689,58 +700,76 @@ const MainApp = () => {
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
                     <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-orange-500 flex items-center justify-center text-white"><Flag size={18} fill="white" /></div><span className="text-[17px] text-black">Флаг</span></div><IOSSwitch checked={newT.is_flagged} onChange={v => setNewT({...newT, is_flagged: v})} /></div>
                     <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Приоритет</span><div className="flex items-center gap-1"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.priority} onChange={e => setNewT({...newT, priority: parseInt(e.target.value)})}>{['Нет','Низкий','Средний','Высокий'].map((v,i)=><option key={i} value={i}>{v}</option>)}</select><span className="absolute right-9 text-gray-500">{['Нет','!','!!','!!!'][newT.priority]}</span><ChevronRight size={16} className="text-gray-400 absolute right-3" /></div></div>
-                    <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Действие</span><div className="flex items-center gap-1 relative"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.type} onChange={e => setNewT({...newT, type: e.target.value})}><option value="reminder">Нет</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option><option value="web_search">Поиск</option><option value="copy">Копировать</option><option value="call">Позвонить</option></select><ChevronRight size={16} className="text-gray-400 absolute right-0" /></div></div>
+                    
+                    {/* SMART ACTION PICKER */}
+                    <div onClick={() => setActionPicker(true)} className="bg-white p-3.5 flex justify-between items-center cursor-pointer active:bg-gray-50">
+                        <span className="text-[17px] text-black">Действие</span>
+                        <div className="flex items-center gap-1">
+                             <span className="text-blue-600 text-[17px] mr-1">{ACTION_NAMES[newT.type] || 'Нет'}</span>
+                             <ChevronRight size={16} className="text-gray-400" />
+                        </div>
+                    </div>
                  </div>
               </div>
            </div>
         </div>
       )}
 
-      {/* TEMPLATE MANAGER MODAL */}
-      {templateManager && (
-          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-2xl h-[80vh] flex flex-col shadow-2xl animate-slide-up-ios">
+      {/* ACTION PICKER MODAL */}
+      {actionPicker && (
+          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center">
+              <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[70vh] flex flex-col shadow-2xl animate-slide-up-ios">
                   <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200">
-                      <button onClick={() => setTemplateManager(false)} className="text-blue-600 font-medium">Закрыть</button>
-                      <h3 className="font-bold text-black">Управление шаблонами</h3>
+                      <button onClick={() => setActionPicker(false)} className="text-blue-600 font-medium text-[17px]">Готово</button>
+                      <h3 className="font-bold text-black text-[17px]">Выбор действия</h3>
                       <div className="w-8"/>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                      {templates.length === 0 && <div className="text-center text-gray-400 mt-10">Нет шаблонов</div>}
-                      {templates.map(t => (
-                          <div key={t.id} className="bg-white p-3 rounded-xl flex items-center justify-between shadow-sm">
-                              <div>
-                                  <div className="font-bold text-black">{t.title}</div>
-                                  <div className="text-xs text-gray-500">{t.type}</div>
-                              </div>
-                              <button onClick={() => actions.deleteTemplate(t.id)} className="text-red-500 p-2"><Trash2 size={18}/></button>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                      {/* BASE ACTIONS */}
+                      <div>
+                          <h4 className="text-gray-500 text-xs uppercase font-bold mb-2 ml-2">Базовые</h4>
+                          <div className="bg-white rounded-xl overflow-hidden">
+                              {Object.entries(ACTION_NAMES).map(([key, label], i, arr) => (
+                                  <div key={key} onClick={() => actions.applyAction(key)} className={`p-3.5 flex items-center gap-3 active:bg-gray-50 ${i!==arr.length-1?'border-b border-gray-100':''}`}>
+                                      {ACTION_ICONS[key]}
+                                      <span className="text-[17px] text-black flex-1">{label}</span>
+                                      {newT.type === key && <Check size={18} className="text-blue-600"/>}
+                                  </div>
+                              ))}
                           </div>
-                      ))}
+                      </div>
+                      
+                      {/* SAVED TEMPLATES */}
+                      <div>
+                          <div className="flex justify-between items-center mb-2 px-2">
+                              <h4 className="text-gray-500 text-xs uppercase font-bold">Сохраненные шаблоны</h4>
+                              {/* <button className="text-blue-600 text-xs">Управлять</button> */}
+                          </div>
+                          <div className="bg-white rounded-xl overflow-hidden">
+                              {templates.length === 0 ? (
+                                  <div className="p-4 text-center text-gray-400 text-sm">Нет сохраненных действий</div>
+                              ) : (
+                                  templates.map((t, i) => (
+                                      <div key={t.id} className={`p-3.5 flex items-center gap-3 active:bg-gray-50 ${i!==templates.length-1?'border-b border-gray-100':''}`}>
+                                          <div onClick={() => actions.applyAction(t.type, t.description, t.title)} className="flex-1 flex items-center gap-3">
+                                              {ACTION_ICONS[t.type]}
+                                              <div className="flex-1">
+                                                  <div className="text-[17px] text-black font-medium">{t.title}</div>
+                                                  <div className="text-xs text-gray-500 line-clamp-1">{t.description}</div>
+                                              </div>
+                                          </div>
+                                          <button onClick={(e) => { e.stopPropagation(); actions.deleteTemplate(t.id); }} className="text-gray-300 hover:text-red-500 p-2"><Trash2 size={18}/></button>
+                                      </div>
+                                  ))
+                              )}
+                          </div>
+                      </div>
                   </div>
-                  <div className="p-4 text-center text-gray-400 text-xs">Создавайте шаблоны при добавлении задачи (кнопка <Zap size={10} className="inline"/>)</div>
               </div>
           </div>
       )}
 
-      {/* TEMPLATE PICKER MODAL */}
-      {templatesPicker && (
-          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-              <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios max-h-[60vh] overflow-y-auto">
-                  <h3 className="text-lg font-bold text-center mb-4 text-black">Выберите шаблон</h3>
-                  <div className="space-y-2">
-                      {templates.length === 0 && <div className="text-center text-gray-400">Нет шаблонов</div>}
-                      {templates.map(t => (
-                          <button key={t.id} onClick={() => actions.applyTemplate(t)} className="w-full bg-gray-50 p-3 rounded-xl text-left hover:bg-gray-100 active:scale-95 transition">
-                              <div className="font-bold text-black">{t.title}</div>
-                              <div className="text-xs text-gray-500 line-clamp-1">{t.description}</div>
-                          </button>
-                      ))}
-                  </div>
-                  <button onClick={() => setTemplatesPicker(false)} className="w-full mt-4 py-3 text-gray-500 font-medium">Отмена</button>
-              </div>
-          </div>
-      )}
-
+      {/* LIST MODAL */}
       {listModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios">
