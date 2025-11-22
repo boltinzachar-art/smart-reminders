@@ -8,7 +8,7 @@ import {
   Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles, Settings,
   Zap, MessageCircle, Mail, Phone, Link as LinkIcon
 } from 'lucide-react';
-import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, MouseSensor } from '@dnd-kit/core';
+import { DndContext, closestCenter, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -102,19 +102,18 @@ const performAction = (e, task, showToast) => {
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
-// --- SMART CARD COMPONENT (FIXED SWIPE & SELECTION) ---
+// --- SMART CARD COMPONENT ---
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
   
-  // Свайп логика
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
   const isSwiping = useRef(false);
   const timerRef = useRef(null);
   const toast = useToast();
 
-  // --- TOUCH HANDLERS ---
+  // --- TOUCH HANDLERS (SWIPE) ---
   const handleTouchStart = (e) => {
     if (selectionMode || viewMode === 'trash' || isDragging) return;
     touchStartX.current = e.touches[0].clientX;
@@ -126,20 +125,17 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
     const currentX = e.touches[0].clientX;
     const diff = currentX - touchStartX.current;
 
-    // Логика: если уже открыто (-70), разрешаем двигать вправо (закрывать)
-    // Если закрыто (0), разрешаем двигать влево (открывать)
     if (swipeOffset === 0 && diff < 0) {
-        setSwipeOffset(Math.max(diff, -80)); // Тянем влево
+        setSwipeOffset(Math.max(diff, -80)); 
         isSwiping.current = true;
     } else if (swipeOffset < 0) {
-        setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); // Тянем вправо (закрываем)
+        setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); 
         isSwiping.current = true;
     }
   };
 
   const handleTouchEnd = () => {
     if (!isSwiping.current) return;
-    // Если оттянули больше половины кнопки - фиксируем
     if (swipeOffset < -35) {
         setSwipeOffset(-70);
     } else {
@@ -148,22 +144,20 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
     isSwiping.current = false;
   };
 
-  // --- CLICKS ---
+  // --- CLICK HANDLERS ---
   const handleMainClick = (e) => {
       if (swipeOffset < 0) {
-          // Если открыт свайп - клик закрывает его
           setSwipeOffset(0);
           return;
       }
       if (selectionMode) {
-          // В режиме выбора клик по карточке выбирает её
+          e.stopPropagation();
           onSelect(task.id);
       }
   };
 
   const handleCircleClick = (e) => {
-    e.stopPropagation(); // Чтобы не триггерить выбор или драг
-    
+    e.stopPropagation();
     if (selectionMode) { onSelect(task.id); return; }
     if (viewMode === 'completed') { actions.uncomplete(task); return; }
     if (viewMode === 'trash') return;
@@ -183,7 +177,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
       zIndex: isDragging ? 50 : 'auto', 
       opacity: isDragging ? 0.8 : 1,
       position: 'relative',
-      touchAction: 'pan-y' // Разрешаем только вертикальный скролл, горизонтальный перехватываем
+      touchAction: 'pan-y'
   };
 
   const contentStyle = {
@@ -199,13 +193,13 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   else if (task.completed) circleClass += "bg-blue-500 border-blue-500";
   else circleClass += "border-gray-300 hover:border-blue-500 bg-transparent";
 
-  // DND слушатели вешаем на обертку, НО только если не режим выбора
+  // DND атрибуты только если не режим выбора/удаления
   const dndProps = selectionMode || viewMode === 'trash' ? {} : { ...attributes, ...listeners };
 
   return (
     <div ref={setNodeRef} style={dndStyle} {...dndProps}>
       
-      {/* КНОПКА УДАЛЕНИЯ (КРУГЛАЯ, СЗАДИ) */}
+      {/* КНОПКА УДАЛЕНИЯ (SWIPE BACK) */}
       {!isDragging && !selectionMode && viewMode !== 'trash' && (
           <div className="absolute inset-y-0 right-2 flex items-center justify-end z-0">
               <button 
@@ -218,7 +212,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
           </div>
       )}
 
-      {/* КАРТОЧКА */}
+      {/* CARD CONTENT */}
       <div 
         style={contentStyle}
         onTouchStart={handleTouchStart}
@@ -227,7 +221,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
         onClick={handleMainClick}
         className={`relative z-10 group w-full bg-white rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}
       >
-        {/* КРУЖОЧЕК (С onPointerDown для защиты от DND) */}
+        {/* CIRCLE */}
         {viewMode !== 'trash' ? (
           <button onPointerDown={(e) => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
             {(selectionMode && isSelected || (!selectionMode && viewMode === 'completed')) && <Check size={14} className="text-white" strokeWidth={3} />}
@@ -267,11 +261,12 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
           </div>
         </div>
 
-        {/* КНОПКА НАСТРОЙКИ (Исправлена: большая зона нажатия, без DND) */}
+        {/* SETTINGS BUTTON (ISOLATED & BIGGER) */}
         {!selectionMode && !viewMode.includes('trash') && (
             <button 
-              className="text-gray-400 p-2 -mr-2 hover:bg-gray-100 rounded-full active:text-gray-600" 
-              onPointerDown={(e) => e.stopPropagation()} // Останавливаем DND при нажатии
+              className="text-gray-400 p-3 -mr-2 -my-2 hover:bg-gray-100 rounded-full active:text-gray-600 touch-manipulation relative z-20" 
+              onPointerDown={(e) => e.stopPropagation()} 
+              onTouchStart={(e) => e.stopPropagation()} 
               onClick={(e) => { e.stopPropagation(); onEdit(task); }}
             >
               <MoreHorizontal size={22} />
@@ -351,10 +346,9 @@ const MainApp = () => {
   const [newListTitle, setNewListTitle] = useState('');
   const [search, setSearch] = useState('');
 
-  // Long Press для Drag&Drop
+  // ВАЖНО: PointerSensor с задержкой для DND
   const sensors = useSensors(
-      useSensor(MouseSensor),
-      useSensor(TouchSensor, { 
+      useSensor(PointerSensor, { 
           activationConstraint: { delay: 250, tolerance: 5 } 
       })
   );
@@ -457,6 +451,7 @@ const MainApp = () => {
     res = res.filter(t => !t.is_deleted);
     if (view === 'completed') return res.filter(t => t.completed);
     res = res.filter(t => !t.completed);
+
     const today = new Date().setHours(0,0,0,0);
     const tomorrow = today + 86400000;
     if (view === 'today') return res.filter(t => t.next_run && new Date(t.next_run) >= today && new Date(t.next_run) < tomorrow);
@@ -642,18 +637,7 @@ const MainApp = () => {
               <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[70vh] flex flex-col shadow-2xl animate-slide-up-ios">
                   <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200"><button onClick={() => setActionPicker(false)} className="text-blue-600 font-medium text-[17px]">Готово</button><h3 className="font-bold text-black text-[17px]">Выбор действия</h3><div className="w-8"/></div>
                   <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                      <div>
-                          <h4 className="text-gray-500 text-xs uppercase font-bold mb-2 ml-2">Базовые</h4>
-                          <div className="bg-white rounded-xl overflow-hidden">
-                              {Object.entries(ACTION_NAMES).map(([key, label], i, arr) => (
-                                  <div key={key} onClick={() => { setNewT(p => ({...p, type: key})); setActionPicker(false); }} className={`p-3.5 flex items-center gap-3 active:bg-gray-50 ${i!==arr.length-1?'border-b border-gray-100':''}`}>
-                                      {ACTION_ICONS[key]}
-                                      <span className="text-[17px] text-black flex-1">{label}</span>
-                                      {newT.type === key && <Check size={18} className="text-blue-600"/>}
-                                  </div>
-                              ))}
-                          </div>
-                      </div>
+                      <div><h4 className="text-gray-500 text-xs uppercase font-bold mb-2 ml-2">Базовые</h4><div className="bg-white rounded-xl overflow-hidden">{Object.entries(ACTION_NAMES).map(([key, label], i, arr) => (<div key={key} onClick={() => { setNewT(p => ({...p, type: key})); setActionPicker(false); }} className={`p-3.5 flex items-center gap-3 active:bg-gray-50 ${i!==arr.length-1?'border-b border-gray-100':''}`}>{ACTION_ICONS[key]}<span className="text-[17px] text-black flex-1">{label}</span>{newT.type === key && <Check size={18} className="text-blue-600"/>}</div>))}</div></div>
                   </div>
               </div>
           </div>
