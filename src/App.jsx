@@ -6,7 +6,7 @@ import {
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
   Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles, Settings,
-  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, BookmarkPlus
+  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, Folder
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -102,12 +102,54 @@ const performAction = (e, task, showToast) => {
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
-// --- SMART CARD COMPONENT ---
+// --- COMPONENTS ---
+
+const SwipeableListItem = ({ list, onEdit, onDelete }) => {
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const touchStartX = useRef(0);
+  const isSwiping = useRef(false);
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+    isSwiping.current = false;
+  };
+
+  const handleTouchMove = (e) => {
+    const currentX = e.touches[0].clientX;
+    const diff = currentX - touchStartX.current;
+    if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } 
+    else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isSwiping.current) return;
+    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
+    isSwiping.current = false;
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-xl mb-2">
+      <div className="absolute inset-y-0 right-0 w-[70px] bg-red-500 flex items-center justify-center text-white z-0 rounded-r-xl">
+          <button className="w-full h-full flex items-center justify-center" onClick={() => onDelete(list.id)}><Trash2 size={20}/></button>
+      </div>
+      <div 
+        style={{ transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' }}
+        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list.id); }}
+        className="relative z-10 bg-white p-4 flex items-center gap-3 active:bg-gray-50 transition-colors rounded-xl shadow-sm"
+      >
+        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
+        <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
+        <ChevronRight size={16} className="text-gray-300" />
+      </div>
+    </div>
+  );
+};
+
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
   
-  // Свайп логика
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
   const isSwiping = useRef(false);
@@ -135,11 +177,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
   const handleTouchEnd = () => {
     if (!isSwiping.current) return;
-    if (swipeOffset < -35) {
-        setSwipeOffset(-70);
-    } else {
-        setSwipeOffset(0);
-    }
+    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
     isSwiping.current = false;
   };
 
@@ -232,7 +270,6 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
-// --- SCHEDULED VIEW ---
 const ScheduledView = ({ tasks, actions, onEdit }) => {
     const sections = useMemo(() => {
       const today = new Date(); today.setHours(0,0,0,0);
@@ -289,7 +326,6 @@ const MainApp = () => {
   const [templateManager, setTemplateManager] = useState(false);
   const [templatesPicker, setTemplatesPicker] = useState(false);
   const [actionPicker, setActionPicker] = useState(false);
-  const [listPicker, setListPicker] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -595,13 +631,14 @@ const MainApp = () => {
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div>
-                        <div className="flex gap-2">
-                             <button onClick={actions.saveTemplate} className="text-purple-500 p-1 hover:bg-purple-50 rounded-full"><BookmarkPlus size={20}/></button>
-                             <button onClick={() => setTemplatesPicker(true)} className="text-xs bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200"><Zap size={12}/> Шаблоны</button>
-                        </div>
+                        <button onClick={() => setTemplatesPicker(true)} className="text-xs bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200"><Zap size={12}/> Шаблоны</button>
                     </div>
                     <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
-                    <button onClick={actions.generateAi} disabled={aiLoading} className="w-full bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
+                    <div className="flex gap-2">
+                        <button onClick={actions.generateAi} disabled={aiLoading} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
+                        {/* SAVE AS TEMPLATE BTN */}
+                        <button onClick={actions.saveTemplate} className="px-3 bg-gray-100 text-gray-600 rounded-lg active:scale-95"><Zap size={20}/></button>
+                    </div>
                     {aiResult && (
                         <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in">
                             <div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div>
@@ -713,7 +750,7 @@ const MainApp = () => {
               <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
               <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-black" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
               <div className="flex gap-2"><button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button><button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button></div>
-              {editingListId && <button onClick={() => actions.deleteList(editingListId)} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
+              {editingListId && <button onClick={actions.deleteList} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
            </div>
         </div>
       )}
