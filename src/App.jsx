@@ -6,7 +6,7 @@ import {
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
   Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles, Settings,
-  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, Folder
+  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, Save
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -102,54 +102,12 @@ const performAction = (e, task, showToast) => {
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
-// --- COMPONENTS ---
-
-const SwipeableListItem = ({ list, onEdit, onDelete }) => {
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const touchStartX = useRef(0);
-  const isSwiping = useRef(false);
-
-  const handleTouchStart = (e) => {
-    touchStartX.current = e.touches[0].clientX;
-    isSwiping.current = false;
-  };
-
-  const handleTouchMove = (e) => {
-    const currentX = e.touches[0].clientX;
-    const diff = currentX - touchStartX.current;
-    if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } 
-    else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; }
-  };
-
-  const handleTouchEnd = () => {
-    if (!isSwiping.current) return;
-    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
-    isSwiping.current = false;
-  };
-
-  return (
-    <div className="relative overflow-hidden rounded-xl mb-2">
-      <div className="absolute inset-y-0 right-0 w-[70px] bg-red-500 flex items-center justify-center text-white z-0 rounded-r-xl">
-          <button className="w-full h-full flex items-center justify-center" onClick={() => onDelete(list.id)}><Trash2 size={20}/></button>
-      </div>
-      <div 
-        style={{ transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' }}
-        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list.id); }}
-        className="relative z-10 bg-white p-4 flex items-center gap-3 active:bg-gray-50 transition-colors rounded-xl shadow-sm"
-      >
-        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
-        <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
-        <ChevronRight size={16} className="text-gray-300" />
-      </div>
-    </div>
-  );
-};
-
+// --- SMART CARD COMPONENT ---
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
   
+  // Свайп логика
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
   const isSwiping = useRef(false);
@@ -225,22 +183,16 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
   const dndProps = selectionMode || viewMode === 'trash' ? {} : { ...attributes, ...listeners };
 
-  // Bg Color logic
-  let bgClass = "bg-white";
-  if (viewMode === 'search') {
-      if (task.is_deleted) bgClass = "bg-red-50 border border-red-100";
-      else if (task.completed) bgClass = "bg-gray-100 border border-gray-200";
-  }
-  if (isCompleting) bgClass = "bg-gray-50";
-
   return (
     <div ref={setNodeRef} style={dndStyle} {...dndProps}>
       {!isDragging && !selectionMode && viewMode !== 'trash' && (
           <div className="absolute inset-y-0 right-2 flex items-center justify-end z-0">
-              <button className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white shadow-sm active:scale-90 transition-transform" onPointerDown={(e) => e.stopPropagation()} onClick={() => actions.delete(task.id)}><Trash2 size={18}/></button>
+              <button className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white shadow-sm active:scale-90 transition-transform" onPointerDown={(e) => e.stopPropagation()} onClick={() => actions.delete(task.id)}>
+                  <Trash2 size={18}/>
+              </button>
           </div>
       )}
-      <div style={contentStyle} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={handleMainClick} className={`relative z-10 group w-full rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${bgClass} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
+      <div style={contentStyle} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={handleMainClick} className={`relative z-10 group w-full bg-white rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
         {viewMode !== 'trash' ? (
           <button onPointerDown={(e) => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
             {(selectionMode && isSelected || (!selectionMode && viewMode === 'completed')) && <Check size={14} className="text-white" strokeWidth={3} />}
@@ -276,6 +228,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
+// --- SCHEDULED VIEW (FIXED REFERENCE ERROR) ---
 const ScheduledView = ({ tasks, actions, onEdit }) => {
     const sections = useMemo(() => {
       const today = new Date(); today.setHours(0,0,0,0);
@@ -285,7 +238,11 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
       for (let i = 0; i <= 14; i++) {
           const d = new Date(today); d.setDate(today.getDate() + i);
           const s = d.getTime(), e = s + 86400000;
-          const dayTasks = tasks.filter(t => { if(!t.next_run)return false; const tm=new Date(t.next_run).getTime(); return tm>=s && tm<e; });
+          const dayTasks = tasks.filter(t => { 
+              if(!t.next_run)return false; 
+              const tm=new Date(t.next_run).getTime(); 
+              return tm>=s && tm<e; 
+          });
           let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
           if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
           result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
@@ -308,6 +265,49 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
     );
 };
 
+// --- SWIPEABLE LIST ITEM (FOR SETTINGS) ---
+const SwipeableListItem = ({ list, onEdit, onDelete }) => {
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const touchStartX = useRef(0);
+  const isSwiping = useRef(false);
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+    isSwiping.current = false;
+  };
+
+  const handleTouchMove = (e) => {
+    const currentX = e.touches[0].clientX;
+    const diff = currentX - touchStartX.current;
+    if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } 
+    else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isSwiping.current) return;
+    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
+    isSwiping.current = false;
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-xl mb-2">
+      <div className="absolute inset-y-0 right-0 w-[70px] bg-red-500 flex items-center justify-center text-white z-0 rounded-r-xl">
+          <button className="w-full h-full flex items-center justify-center" onClick={() => onDelete(list.id)}><Trash2 size={20}/></button>
+      </div>
+      <div 
+        style={{ transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' }}
+        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list.id); }}
+        className="relative z-10 bg-white p-4 flex items-center gap-3 active:bg-gray-50 transition-colors rounded-xl shadow-sm"
+      >
+        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
+        <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
+        <ChevronRight size={16} className="text-gray-300" />
+      </div>
+    </div>
+  );
+};
+
 const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (<button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform"><div className="flex justify-between w-full"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}><Icon size={18} className="text-white" /></div><span className="text-2xl font-bold text-black">{count || 0}</span></div><span className="text-gray-500 font-medium text-[15px] self-start">{title}</span></button>);
 const UserListItem = ({ list, count, onClick }) => (<div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer"><div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div><span className="flex-1 text-[17px] font-medium text-black">{list.title}</span><span className="text-gray-400 text-[15px]">{count || 0}</span><ChevronRight size={16} className="text-gray-300" /></div>);
 
@@ -328,14 +328,13 @@ const MainApp = () => {
   const [templateManager, setTemplateManager] = useState(false);
   const [templatesPicker, setTemplatesPicker] = useState(false);
   const [actionPicker, setActionPicker] = useState(false);
-  const [listPicker, setListPicker] = useState(false); // NEW: LIST PICKER
+  const [listPicker, setListPicker] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState('');
   const [aiInstruction, setAiInstruction] = useState('');
   const [newT, setNewT] = useState({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false, list_id: null });
-  
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
   const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
@@ -441,7 +440,6 @@ const MainApp = () => {
 
   const filteredTasks = useMemo(() => {
     let res = tasks;
-    // GLOBAL SEARCH
     if (search) {
         const l = search.toLowerCase();
         return tasks.filter(t => 
@@ -475,18 +473,19 @@ const MainApp = () => {
       const res = [];
       const overdue = filteredTasks.filter(t => t.next_run && new Date(t.next_run) < today);
       if(overdue.length) res.push({title:'Просрочено', data:overdue, isOverdue: true});
-      for (let i = 0; i <= 14; i++) {
-          const d = new Date(today); d.setDate(today.getDate() + i);
+      
+      for(let i=0; i<=14; i++){
+          const d = new Date(today); d.setDate(today.getDate()+i);
           const s = d.getTime(), e = s + 86400000;
           const dt = filteredTasks.filter(t => { if(!t.next_run)return false; const tm=new Date(t.next_run).getTime(); return tm>=s && tm<e; });
-          let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
-          if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
+          let title = d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',weekday:'short'});
+          if(i===0)title='Сегодня'; if(i===1)title='Завтра';
           res.push({title, data:dt, compact: dt.length===0});
       }
-      const fut = new Date(today); fut.setDate(today.getDate() + 15);
-      const futTasks = filteredTasks.filter(t => t.next_run && new Date(t.next_run) >= fut);
-      if(futTasks.length > 0) result.push({ title: 'Позже', data: futTasks });
-      return result;
+      const fut = new Date(today); fut.setDate(today.getDate()+15);
+      const futT = filteredTasks.filter(t => t.next_run && new Date(t.next_run) >= fut);
+      if(futT.length) res.push({title:'Позже', data:futT});
+      return res;
   }, [filteredTasks, view]);
 
   const isCustomList = !['home', 'today', 'upcoming', 'all', 'flagged', 'trash', 'completed'].includes(view);
@@ -630,19 +629,11 @@ const MainApp = () => {
                     <div className="relative border-t border-gray-100"><div className="absolute left-4 top-3 text-gray-400"><LinkIcon size={18}/></div><input className="w-full p-3 pl-12 text-[15px] outline-none placeholder-gray-400 text-blue-600" placeholder="URL (ссылка)" value={newT.url} onChange={e => setNewT({...newT, url: e.target.value})} /></div>
                  </div>
                  
-                 {/* TEMPLATES BLOCK */}
-                 <div className="bg-white rounded-xl p-3.5 shadow-sm flex justify-between items-center active:bg-gray-50 transition cursor-pointer" onClick={() => setTemplatesPicker(true)}>
-                     <div className="flex items-center gap-3">
-                         <div className="w-8 h-8 rounded bg-gray-500 flex items-center justify-center text-white"><Zap size={18} fill="white"/></div>
-                         <span className="text-[17px] text-black">Шаблоны</span>
-                     </div>
-                     <ChevronRight size={16} className="text-gray-300" />
-                 </div>
-
                  {/* AI BLOCK */}
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div>
+                        <button onClick={() => setTemplatesPicker(true)} className="text-xs bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200"><Zap size={12}/> Шаблоны</button>
                     </div>
                     <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
                     <div className="flex gap-2">
@@ -668,7 +659,7 @@ const MainApp = () => {
                     {/* LIST SELECTOR (NEW CLICKABLE ROW) */}
                     <div onClick={() => setListPicker(true)} className="bg-white p-3.5 flex justify-between items-center cursor-pointer active:bg-gray-50">
                         <span className="text-[17px] text-black">Список</span>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 relative">
                              <span className="text-blue-600 text-[17px] mr-1">{lists.find(l => l.id === newT.list_id)?.title || 'Входящие'}</span>
                              <ChevronRight size={16} className="text-gray-400" />
                         </div>
@@ -690,6 +681,27 @@ const MainApp = () => {
                   <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200"><button onClick={() => setActionPicker(false)} className="text-blue-600 font-medium text-[17px]">Готово</button><h3 className="font-bold text-black text-[17px]">Выбор действия</h3><div className="w-8"/></div>
                   <div className="flex-1 overflow-y-auto p-4 space-y-6">
                       <div><h4 className="text-gray-500 text-xs uppercase font-bold mb-2 ml-2">Базовые</h4><div className="bg-white rounded-xl overflow-hidden">{Object.entries(ACTION_NAMES).map(([key, label], i, arr) => (<div key={key} onClick={() => { setNewT(p => ({...p, type: key})); setActionPicker(false); }} className={`p-3.5 flex items-center gap-3 active:bg-gray-50 ${i!==arr.length-1?'border-b border-gray-100':''}`}>{ACTION_ICONS[key]}<span className="text-[17px] text-black flex-1">{label}</span>{newT.type === key && <Check size={18} className="text-blue-600"/>}</div>))}</div></div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* TEMPLATE MANAGER MODAL */}
+      {templateManager && (
+          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-2xl h-[80vh] flex flex-col shadow-2xl animate-slide-up-ios">
+                  <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200"><button onClick={() => setTemplateManager(false)} className="text-blue-600 font-medium">Закрыть</button><h3 className="font-bold text-black">Управление шаблонами</h3><div className="w-8"/></div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                      {templates.length === 0 && <div className="text-center text-gray-400 mt-10">Нет шаблонов</div>}
+                      {templates.map(t => (
+                          <div key={t.id} className="bg-white p-3 rounded-xl flex items-center justify-between shadow-sm">
+                              <div>
+                                  <div className="font-bold text-black">{t.title}</div>
+                                  <div className="text-xs text-gray-500">{t.type}</div>
+                              </div>
+                              <button onClick={() => actions.deleteTemplate(t.id)} className="text-red-500 p-2"><Trash2 size={18}/></button>
+                          </div>
+                      ))}
                   </div>
               </div>
           </div>
@@ -737,9 +749,9 @@ const MainApp = () => {
            <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios">
               <h3 className="text-lg font-bold text-center mb-4 text-black">{editingListId ? 'Название списка' : 'Новый список'}</h3>
               <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
-              <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-black" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} />
+              <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-black" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
               <div className="flex gap-2"><button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button><button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button></div>
-              {editingListId && <button onClick={() => actions.deleteList(editingListId)} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
+              {editingListId && <button onClick={actions.deleteList} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
            </div>
         </div>
       )}
