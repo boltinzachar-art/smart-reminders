@@ -102,12 +102,54 @@ const performAction = (e, task, showToast) => {
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
-// --- SMART CARD COMPONENT ---
+// --- SWIPEABLE LIST ITEM (FOR SETTINGS) ---
+const SwipeableListItem = ({ list, onEdit, onDelete }) => {
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const touchStartX = useRef(0);
+  const isSwiping = useRef(false);
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+    isSwiping.current = false;
+  };
+
+  const handleTouchMove = (e) => {
+    const currentX = e.touches[0].clientX;
+    const diff = currentX - touchStartX.current;
+    if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } 
+    else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isSwiping.current) return;
+    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
+    isSwiping.current = false;
+  };
+
+  return (
+    <div className="relative overflow-hidden">
+      <div className="absolute inset-y-0 right-0 w-[70px] bg-red-500 flex items-center justify-center text-white z-0">
+          <button className="w-full h-full flex items-center justify-center" onClick={() => onDelete(list.id)}><Trash2 size={20}/></button>
+      </div>
+      <div 
+        style={{ transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' }}
+        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list); }}
+        className="relative z-10 bg-white p-4 flex items-center gap-3 active:bg-gray-50 transition-colors border-b border-gray-100 last:border-0"
+      >
+        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
+        <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
+        <ChevronRight size={16} className="text-gray-300" />
+      </div>
+    </div>
+  );
+};
+
+
+// --- SMART CARD COMPONENT (TASK) ---
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
-  
-  // Свайп логика
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
   const isSwiping = useRef(false);
@@ -124,34 +166,19 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
     if (selectionMode || viewMode === 'trash' || isDragging) return;
     const currentX = e.touches[0].clientX;
     const diff = currentX - touchStartX.current;
-    if (swipeOffset === 0 && diff < 0) {
-        setSwipeOffset(Math.max(diff, -80)); 
-        isSwiping.current = true;
-    } else if (swipeOffset < 0) {
-        setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); 
-        isSwiping.current = true;
-    }
+    if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } 
+    else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; }
   };
 
   const handleTouchEnd = () => {
     if (!isSwiping.current) return;
-    if (swipeOffset < -35) {
-        setSwipeOffset(-70);
-    } else {
-        setSwipeOffset(0);
-    }
+    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
     isSwiping.current = false;
   };
 
   const handleMainClick = (e) => {
-      if (swipeOffset < 0) {
-          setSwipeOffset(0);
-          return;
-      }
-      if (selectionMode) {
-          e.stopPropagation();
-          onSelect(task.id);
-      }
+      if (swipeOffset < 0) { setSwipeOffset(0); return; }
+      if (selectionMode) { e.stopPropagation(); onSelect(task.id); }
   };
 
   const handleCircleClick = (e) => {
@@ -160,29 +187,12 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
     if (viewMode === 'completed') { actions.uncomplete(task); return; }
     if (viewMode === 'trash') return;
     
-    if (isCompleting) { 
-        clearTimeout(timerRef.current); 
-        setIsCompleting(false); 
-    } else { 
-        setIsCompleting(true); 
-        timerRef.current = setTimeout(() => { actions.complete(task); setIsCompleting(false); }, 1000); 
-    }
+    if (isCompleting) { clearTimeout(timerRef.current); setIsCompleting(false); } 
+    else { setIsCompleting(true); timerRef.current = setTimeout(() => { actions.complete(task); setIsCompleting(false); }, 1000); }
   };
 
-  const dndStyle = { 
-      transform: CSS.Transform.toString(transform), 
-      transition: isDragging ? 'none' : 'transform 0.2s ease', 
-      zIndex: isDragging ? 50 : 'auto', 
-      opacity: isDragging ? 0.8 : 1,
-      position: 'relative',
-      touchAction: 'pan-y'
-  };
-
-  const contentStyle = {
-      transform: `translateX(${swipeOffset}px)`,
-      transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out'
-  };
-  
+  const dndStyle = { transform: CSS.Transform.toString(transform), transition: isDragging ? 'none' : 'transform 0.2s ease', zIndex: isDragging ? 50 : 'auto', opacity: isDragging ? 0.8 : 1, position: 'relative', touchAction: 'pan-y' };
+  const contentStyle = { transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' };
   const isOverdue = task.next_run && new Date(task.next_run) < new Date() && !task.completed;
   
   let circleClass = "mt-0.5 shrink-0 w-[24px] h-[24px] rounded-full border-2 flex items-center justify-center transition-all duration-300 ";
@@ -193,16 +203,22 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
   const dndProps = selectionMode || viewMode === 'trash' ? {} : { ...attributes, ...listeners };
 
+  // ЦВЕТА ДЛЯ ПОИСКА
+  let bgClass = "bg-white";
+  if (viewMode === 'search') {
+      if (task.is_deleted) bgClass = "bg-red-50 border border-red-100";
+      else if (task.completed) bgClass = "bg-gray-100 border border-gray-200";
+  }
+  if (isCompleting) bgClass = "bg-gray-50";
+
   return (
     <div ref={setNodeRef} style={dndStyle} {...dndProps}>
       {!isDragging && !selectionMode && viewMode !== 'trash' && (
           <div className="absolute inset-y-0 right-2 flex items-center justify-end z-0">
-              <button className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white shadow-sm active:scale-90 transition-transform" onPointerDown={(e) => e.stopPropagation()} onClick={() => actions.delete(task.id)}>
-                  <Trash2 size={18}/>
-              </button>
+              <button className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white shadow-sm active:scale-90 transition-transform" onPointerDown={(e) => e.stopPropagation()} onClick={() => actions.delete(task.id)}><Trash2 size={18}/></button>
           </div>
       )}
-      <div style={contentStyle} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={handleMainClick} className={`relative z-10 group w-full bg-white rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
+      <div style={contentStyle} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={handleMainClick} className={`relative z-10 group w-full rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${bgClass} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
         {viewMode !== 'trash' ? (
           <button onPointerDown={(e) => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
             {(selectionMode && isSelected || (!selectionMode && viewMode === 'completed')) && <Check size={14} className="text-white" strokeWidth={3} />}
@@ -245,7 +261,11 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
       for (let i = 0; i <= 14; i++) {
           const d = new Date(today); d.setDate(today.getDate() + i);
           const s = d.getTime(), e = s + 86400000;
-          const dayTasks = tasks.filter(t => { if(!t.next_run)return false; const tm=new Date(t.next_run).getTime(); return tm>=s && tm<e; });
+          const dayTasks = tasks.filter(t => { 
+              if(!t.next_run)return false; 
+              const tm=new Date(t.next_run).getTime(); 
+              return tm>=s && tm<e; 
+          });
           let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
           if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
           result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
@@ -282,25 +302,28 @@ const MainApp = () => {
   const [userId, setUserId] = useState(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  
+  // Modals
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
+  const [listSettingsModal, setListSettingsModal] = useState(false); // NEW: LIST SETTINGS
   const [templateManager, setTemplateManager] = useState(false);
   const [templatesPicker, setTemplatesPicker] = useState(false);
   const [actionPicker, setActionPicker] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
+  
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState('');
   const [aiInstruction, setAiInstruction] = useState('');
   const [newT, setNewT] = useState({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
-  
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
   const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
   const [timeVal, setTimeVal] = useState(new Date().toTimeString().slice(0, 5));
   const [newListTitle, setNewListTitle] = useState('');
   const [search, setSearch] = useState('');
-  const [showSearch, setShowSearch] = useState(false); // State for showing search input
+  const [showSearch, setShowSearch] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 5 } }));
 
@@ -358,7 +381,7 @@ const MainApp = () => {
     deleteTemplate: async (id) => { if(confirm("Удалить?")){ setTemplates(p=>p.filter(t=>t.id!==id)); if(isOnline) await supabase.from('templates').delete().eq('id', id); } },
     createList: async () => { if(!newListTitle)return; const l={title:newListTitle,telegram_user_id:userId,color:'#3B82F6'}; const{data}=await supabase.from('lists').insert([l]).select(); if(data){setLists(p=>[...p,data[0]]);toast("Список создан");} setListModal(false); setNewListTitle(''); },
     saveList: async () => { if(!newListTitle)return; if(editingListId){setLists(p=>p.map(l=>l.id===editingListId?{...l,title:newListTitle}:l)); if(isOnline)await supabase.from('lists').update({title:newListTitle}).eq('id',editingListId); toast("Переименовано");}else{actions.createList();} setListModal(false); setNewListTitle(''); setEditingListId(null); },
-    deleteList: async () => { if(!editingListId||!confirm("Удалить список и задачи?"))return; setTasks(p=>p.filter(t=>t.list_id!==editingListId)); setLists(p=>p.filter(l=>l.id!==editingListId)); setView('home'); setListModal(false); if(isOnline)await supabase.from('lists').delete().eq('id',editingListId); toast("Удалено"); },
+    deleteList: async (id) => { const targetId = id || editingListId; if(!targetId||!confirm("Удалить список и задачи?"))return; setTasks(p=>p.filter(t=>t.list_id!==targetId)); setLists(p=>p.filter(l=>l.id!==targetId)); if(view===targetId) setView('home'); setListModal(false); if(isOnline)await supabase.from('lists').delete().eq('id',targetId); toast("Удалено"); },
     openListModal: (id=null) => { if(id){const l=lists.find(x=>x.id===id); setNewListTitle(l.title); setEditingListId(id);}else{setNewListTitle(''); setEditingListId(null);} setListModal(true); },
     complete: async (task) => { const isRec=task.frequency!=='once'&&task.next_run; const nd=isRec?calculateNextRun(task.next_run,task.frequency):null; setTasks(p=>p.map(t=>t.id===task.id?(isRec?{...t,next_run:nd}:{...t,completed:true}):t)); if(isOnline&&!task.id.toString().startsWith('temp-')){await supabase.from('tasks').update(isRec?{next_run:nd}:{completed:true}).eq('id',task.id);} toast(isRec?"Перенесено":"Выполнено"); },
     uncomplete: async (task) => { setTasks(p=>p.map(t=>t.id===task.id?{...t,completed:false}:t)); if(isOnline)await supabase.from('tasks').update({completed:false}).eq('id',task.id); },
@@ -394,16 +417,11 @@ const MainApp = () => {
 
   const filteredTasks = useMemo(() => {
     let res = tasks;
-    // GLOBAL SEARCH LOGIC
+    // GLOBAL SEARCH (Include everything)
     if (search) {
         const l = search.toLowerCase();
-        // Search across ALL tasks, not just current view
-        return tasks.filter(t => 
-            !t.is_deleted && // Still allow searching deleted? Maybe no.
-            (t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(l)))
-        );
+        return tasks.filter(t => t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(l)));
     }
-    
     if (view === 'trash') return res.filter(t => t.is_deleted);
     res = res.filter(t => !t.is_deleted);
     if (view === 'completed') return res.filter(t => t.completed);
@@ -446,40 +464,22 @@ const MainApp = () => {
       return res;
   }, [filteredTasks, view]);
 
+  const isCustomList = !['home', 'today', 'upcoming', 'all', 'flagged', 'trash', 'completed'].includes(view);
+
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
-      
-      {/* --- HOME SCREEN --- */}
       {view === 'home' && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300 pb-24">
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
           <div className="flex justify-between items-end mb-2">
              <h2 className="text-3xl font-bold text-black ml-1">Мои дела</h2>
              <div className="flex gap-2">
-                {/* SEARCH TOGGLE BUTTON */}
-                <button 
-                    onClick={() => { setShowSearch(!showSearch); setSearch(''); }} 
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${showSearch ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-600'}`}
-                >
-                    <Search size={20}/>
-                </button>
+                <button onClick={() => { setShowSearch(!showSearch); setSearch(''); }} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${showSearch ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-600'}`}><Search size={20}/></button>
                 <button onClick={() => setTemplateManager(true)} className="bg-gray-200 text-black font-bold px-3 rounded-lg text-sm flex items-center gap-1 active:scale-95 transition"><Zap size={16}/> Шаблоны</button>
              </div>
           </div>
           
-          {/* SEARCH INPUT */}
-          {showSearch && (
-              <div className="animate-in fade-in slide-in-from-top-2">
-                  <input 
-                    className="w-full bg-white p-3 rounded-xl text-black placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" 
-                    placeholder="Поиск задач..." 
-                    value={search} 
-                    onChange={e => setSearch(e.target.value)}
-                    autoFocus
-                  />
-              </div>
-          )}
+          {showSearch && <div className="animate-in fade-in slide-in-from-top-2"><input className="w-full bg-white p-3 rounded-xl text-black placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" placeholder="Поиск задач..." value={search} onChange={e => setSearch(e.target.value)} autoFocus /></div>}
 
-          {/* IF SEARCHING - SHOW LIST, ELSE SHOW HOME GRID */}
           {search ? (
               <div className="space-y-2">
                   {filteredTasks.length === 0 && <div className="text-center text-gray-400 py-4">Ничего не найдено</div>}
@@ -493,7 +493,6 @@ const MainApp = () => {
                 <SmartListCard title="Все" count={counts.all} icon={Inbox} color="bg-gray-500" onClick={() => setView('all')} />
                 <SmartListCard title="С флажком" count={counts.flagged} icon={Flag} color="bg-orange-500" onClick={() => setView('flagged')} />
               </div>
-
               <div>
                  <h2 className="text-xl font-bold text-black mb-2 ml-1">Списки</h2>
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm">
@@ -502,15 +501,11 @@ const MainApp = () => {
                         <div onClick={()=>setView('completed')} className="group bg-white p-3 flex items-center gap-3 active:bg-gray-50 transition cursor-pointer"><div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"><CheckCircle2 size={16} className="text-gray-500"/></div><span className="flex-1 text-[17px] font-medium">Выполнено</span><ChevronRight size={16} className="text-gray-300"/></div>
                         <div className="border-t border-gray-100"/>
                         <div onClick={()=>setView('trash')} className="group bg-white p-3 flex items-center gap-3 active:bg-gray-50 transition cursor-pointer"><div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"><Trash2 size={16} className="text-gray-500"/></div><span className="flex-1 text-[17px] font-medium">Недавно удаленные</span><ChevronRight size={16} className="text-gray-300"/></div>
+                        <div className="border-t border-gray-100"/>
+                        {/* LIST SETTINGS ENTRY */}
+                        <div onClick={() => setListSettingsModal(true)} className="group bg-white p-3 flex items-center gap-3 active:bg-gray-50 transition cursor-pointer"><div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"><Settings size={16} className="text-gray-500"/></div><span className="flex-1 text-[17px] font-medium">Настроить списки</span><ChevronRight size={16} className="text-gray-300"/></div>
                    </div>
                  </div>
-              </div>
-              
-              {/* SETTINGS BUTTON (LIST MANAGEMENT) */}
-              <div className="mt-4">
-                  <button onClick={() => actions.openListModal()} className="w-full bg-white p-3 rounded-xl text-blue-600 font-bold text-center shadow-sm active:scale-98 transition">
-                      Настроить списки
-                  </button>
               </div>
             </>
           )}
@@ -520,11 +515,9 @@ const MainApp = () => {
       {/* --- LIST DETAIL SCREEN --- */}
       {view !== 'home' && (
         <div className="flex-1 flex flex-col h-full animate-in slide-in-from-right-8 duration-300 relative">
-          {/* Same List Detail UI ... */}
           <div className="px-4 pt-2 pb-2 bg-[#F2F2F7] sticky top-0 z-20 flex items-center justify-between">
              <div className="flex items-center gap-2"><button onClick={() => {setView('home'); setSelectionMode(false);}} className="flex items-center text-blue-600 font-medium text-[17px] -ml-2"><ChevronLeft size={24} /> Списки</button></div>
              <div className="flex items-center gap-4">
-                 {/* Settings removed from here, moved to home */}
                  {filteredTasks.length > 0 && <button onClick={() => {setSelectionMode(!selectionMode); setSelectedIds(new Set());}} className="text-blue-600 font-medium text-[17px]">{selectionMode ? 'Готово' : 'Выбрать'}</button>}
              </div>
           </div>
@@ -547,7 +540,6 @@ const MainApp = () => {
              )}
           </div>
 
-          {/* BUTTONS FOR LIST VIEW */}
           {!selectionMode && !['trash','completed'].includes(view) && (
             <div className="fixed bottom-6 right-6 z-30">
                <button onClick={() => setTaskModal(true)} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
@@ -566,17 +558,41 @@ const MainApp = () => {
           )}
         </div>
       )}
-      
-      {/* FAB ON HOME SCREEN */}
-      {view === 'home' && (
-        <div className="fixed bottom-6 right-6 z-30">
+
+      {/* --- FAB ON HOME (NEW) --- */}
+      {view === 'home' && !search && (
+        <div className="fixed bottom-6 right-6 z-30 animate-in fade-in zoom-in">
            <button onClick={() => setTaskModal(true)} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
               <Plus size={32} />
            </button>
         </div>
       )}
 
-      {/* TASK MODAL */}
+      {/* --- LIST SETTINGS MODAL (NEW) --- */}
+      {listSettingsModal && (
+          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-2xl h-[70vh] flex flex-col shadow-2xl animate-slide-up-ios">
+                  <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200">
+                      <button onClick={() => setListSettingsModal(false)} className="text-blue-600 font-medium">Закрыть</button>
+                      <h3 className="font-bold text-black">Списки</h3>
+                      <button onClick={() => actions.openListModal()} className="text-blue-600 font-bold"><Plus size={24}/></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                      {lists.length === 0 && <div className="text-center text-gray-400 mt-10">Нет списков</div>}
+                      {lists.map(l => (
+                          <SwipeableListItem 
+                              key={l.id} 
+                              list={l} 
+                              onEdit={(lst) => actions.openListModal(lst.id)} 
+                              onDelete={(id) => { setEditingListId(id); actions.deleteList(id); }}
+                          />
+                      ))}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* TASK MODAL (NO AUTO FOCUS) */}
       {taskModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
            <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[95vh] flex flex-col shadow-2xl animate-slide-up-ios">
@@ -586,30 +602,15 @@ const MainApp = () => {
                  <button onClick={actions.saveTask} className={`text-[17px] font-bold ${newT.title ? 'text-blue-600' : 'text-gray-400'}`}>{editingId ? 'Готово' : 'Добавить'}</button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                 <div className="bg-white rounded-xl overflow-hidden shadow-sm"><input className="w-full p-4 text-[17px] border-b border-gray-100 outline-none placeholder-gray-400 text-black" placeholder="Название" value={newT.title} onChange={e => setNewT({...newT, title: e.target.value})} autoFocus /><textarea className="w-full p-4 text-[15px] outline-none resize-none h-24 placeholder-gray-400 text-black" placeholder="Заметки (или текст для AI)" value={newT.description} onChange={e => setNewT({...newT, description: e.target.value})} />
+                 <div className="bg-white rounded-xl overflow-hidden shadow-sm"><input className="w-full p-4 text-[17px] border-b border-gray-100 outline-none placeholder-gray-400 text-black" placeholder="Название" value={newT.title} onChange={e => setNewT({...newT, title: e.target.value})} /><textarea className="w-full p-4 text-[15px] outline-none resize-none h-24 placeholder-gray-400 text-black" placeholder="Заметки (или текст для AI)" value={newT.description} onChange={e => setNewT({...newT, description: e.target.value})} />
                     <div className="relative border-t border-gray-100"><div className="absolute left-4 top-3 text-gray-400"><LinkIcon size={18}/></div><input className="w-full p-3 pl-12 text-[15px] outline-none placeholder-gray-400 text-blue-600" placeholder="URL (ссылка)" value={newT.url} onChange={e => setNewT({...newT, url: e.target.value})} /></div>
                  </div>
-                 
-                 {/* AI BLOCK */}
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div>
-                        <button onClick={() => setTemplatesPicker(true)} className="text-xs bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200"><Zap size={12}/> Шаблоны</button>
-                    </div>
+                    <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div><button onClick={() => setTemplatesPicker(true)} className="text-xs bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200"><Zap size={12}/> Шаблоны</button></div>
                     <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
-                    <div className="flex gap-2">
-                        <button onClick={actions.generateAi} disabled={aiLoading} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
-                        {/* SAVE AS TEMPLATE BTN */}
-                        <button onClick={actions.saveTemplate} className="px-3 bg-gray-100 text-gray-600 rounded-lg active:scale-95"><Zap size={20}/></button>
-                    </div>
-                    {aiResult && (
-                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in">
-                            <div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div>
-                            <button onClick={() => { setNewT(p => ({...p, description: aiResult})); toast("Вставлено в заметки"); }} className="w-full bg-black text-white text-sm font-bold py-2 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={14}/> Вставить в заметки</button>
-                        </div>
-                    )}
+                    <div className="flex gap-2"><button onClick={actions.generateAi} disabled={aiLoading} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button><button onClick={actions.saveTemplate} className="px-3 bg-gray-100 text-gray-600 rounded-lg active:scale-95"><Zap size={20}/></button></div>
+                    {aiResult && <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in"><div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div><button onClick={() => { setNewT(p => ({...p, description: aiResult})); toast("Вставлено в заметки"); }} className="w-full bg-black text-white text-sm font-bold py-2 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={14}/> Вставить в заметки</button></div>}
                  </div>
-
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
                     <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center text-white"><CalendarIcon size={18} fill="white" /></div><span className="text-[17px] text-black">Дата</span></div><IOSSwitch checked={hasDate} onChange={setHasDate} /></div>
                     {hasDate && <div className="bg-white px-4 pb-3 animate-fade-in-ios"><input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" /></div>}
@@ -626,40 +627,28 @@ const MainApp = () => {
         </div>
       )}
 
-      {/* ACTION PICKER */}
-      {actionPicker && (
-          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center">
-              <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[70vh] flex flex-col shadow-2xl animate-slide-up-ios">
-                  <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200"><button onClick={() => setActionPicker(false)} className="text-blue-600 font-medium text-[17px]">Готово</button><h3 className="font-bold text-black text-[17px]">Выбор действия</h3><div className="w-8"/></div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                      <div><h4 className="text-gray-500 text-xs uppercase font-bold mb-2 ml-2">Базовые</h4><div className="bg-white rounded-xl overflow-hidden">{Object.entries(ACTION_NAMES).map(([key, label], i, arr) => (<div key={key} onClick={() => { setNewT(p => ({...p, type: key})); setActionPicker(false); }} className={`p-3.5 flex items-center gap-3 active:bg-gray-50 ${i!==arr.length-1?'border-b border-gray-100':''}`}>{ACTION_ICONS[key]}<span className="text-[17px] text-black flex-1">{label}</span>{newT.type === key && <Check size={18} className="text-blue-600"/>}</div>))}</div></div>
-                  </div>
-              </div>
-          </div>
+      {/* LIST MODAL (NO AUTO FOCUS) */}
+      {listModal && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+           <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios">
+              <h3 className="text-lg font-bold text-center mb-4 text-black">{editingListId ? 'Название списка' : 'Новый список'}</h3>
+              <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
+              <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-black" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} />
+              <div className="flex gap-2"><button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button><button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button></div>
+              {editingListId && <button onClick={() => actions.deleteList(editingListId)} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
+           </div>
+        </div>
       )}
 
-      {/* TEMPLATE MANAGER MODAL */}
+      {/* TEMPLATES & ACTIONS MODALS (SAME AS BEFORE) */}
       {templateManager && (
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-2xl h-[80vh] flex flex-col shadow-2xl animate-slide-up-ios">
                   <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200"><button onClick={() => setTemplateManager(false)} className="text-blue-600 font-medium">Закрыть</button><h3 className="font-bold text-black">Управление шаблонами</h3><div className="w-8"/></div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                      {templates.length === 0 && <div className="text-center text-gray-400 mt-10">Нет шаблонов</div>}
-                      {templates.map(t => (
-                          <div key={t.id} className="bg-white p-3 rounded-xl flex items-center justify-between shadow-sm">
-                              <div>
-                                  <div className="font-bold text-black">{t.title}</div>
-                                  <div className="text-xs text-gray-500">{t.type}</div>
-                              </div>
-                              <button onClick={() => actions.deleteTemplate(t.id)} className="text-red-500 p-2"><Trash2 size={18}/></button>
-                          </div>
-                      ))}
-                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">{templates.length === 0 && <div className="text-center text-gray-400 mt-10">Нет шаблонов</div>}{templates.map(t => (<div key={t.id} className="bg-white p-3 rounded-xl flex items-center justify-between shadow-sm"><div><div className="font-bold text-black">{t.title}</div><div className="text-xs text-gray-500">{t.type}</div></div><button onClick={() => actions.deleteTemplate(t.id)} className="text-red-500 p-2"><Trash2 size={18}/></button></div>))}</div>
               </div>
           </div>
       )}
-
-      {/* TEMPLATE PICKER MODAL */}
       {templatesPicker && (
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
               <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios max-h-[60vh] overflow-y-auto">
@@ -669,22 +658,15 @@ const MainApp = () => {
               </div>
           </div>
       )}
-
-      {listModal && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-           <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios">
-              <h3 className="text-lg font-bold text-center mb-4 text-black">{editingListId ? 'Название списка' : 'Новый список'}</h3>
-              <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
-              <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-black" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
-              <div className="flex gap-2">
-                  <button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button>
-                  <button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button>
+      {actionPicker && (
+          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center">
+              <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[70vh] flex flex-col shadow-2xl animate-slide-up-ios">
+                  <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200"><button onClick={() => setActionPicker(false)} className="text-blue-600 font-medium text-[17px]">Готово</button><h3 className="font-bold text-black text-[17px]">Выбор действия</h3><div className="w-8"/></div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                      <div><h4 className="text-gray-500 text-xs uppercase font-bold mb-2 ml-2">Базовые</h4><div className="bg-white rounded-xl overflow-hidden">{Object.entries(ACTION_NAMES).map(([key, label], i, arr) => (<div key={key} onClick={() => { setNewT(p => ({...p, type: key})); setActionPicker(false); }} className={`p-3.5 flex items-center gap-3 active:bg-gray-50 ${i!==arr.length-1?'border-b border-gray-100':''}`}>{ACTION_ICONS[key]}<span className="text-[17px] text-black flex-1">{label}</span>{newT.type === key && <Check size={18} className="text-blue-600"/>}</div>))}</div></div>
+                  </div>
               </div>
-              {editingListId && (
-                  <button onClick={actions.deleteList} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>
-              )}
-           </div>
-        </div>
+          </div>
       )}
     </div>
   );

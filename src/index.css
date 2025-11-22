@@ -24,9 +24,9 @@ html, body, #root {
   50% { border-color: #3B82F6; background-color: #3B82F6; }
 }
 
-/* Класс для мигания (3 раза по 0.5с = 0.9с) */
+/* Класс для мигания (3 раза по 0.3с = 0.9с) */
 .animate-blink-3 {
-  animation: blink-blue 0.5s ease-in-out 3;
+  animation: blink-blue 0.3s ease-in-out 3;
 }
 
 /* Плавное появление */
