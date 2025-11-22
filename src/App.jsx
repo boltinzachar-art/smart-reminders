@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, createContext, useContext 
 import { supabase } from './supabaseClient';
 import WebApp from '@twa-dev/sdk';
 import { 
-  Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, 
+  Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
   Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles, Settings,
@@ -82,6 +82,7 @@ const performAction = (e, task, showToast) => {
     web_search: `https://www.google.com/search?q=${title}`,
     call: `tel:${task.description || ''}`
   };
+  
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
@@ -93,41 +94,22 @@ const ACTION_ICONS = {
     call: <Phone size={14} />
 };
 
-// --- SMART CARD COMPONENT ---
+const ACTION_NAMES = {
+    reminder: 'Нет действия',
+    email: 'Email',
+    whatsapp: 'WhatsApp',
+    web_search: 'Поиск',
+    copy: 'Копировать',
+    call: 'Позвонить'
+};
+
+// --- CARD COMPONENT ---
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
-  const [swipeOffset, setSwipeOffset] = useState(0); // Для свайпа
   const timerRef = useRef(null);
   const toast = useToast();
 
-  // --- SWIPE LOGIC ---
-  const touchStart = useRef(0);
-  
-  const handleTouchStart = (e) => {
-    if (selectionMode || viewMode === 'trash' || isDragging) return;
-    touchStart.current = e.touches[0].clientX;
-  };
-
-  const handleTouchMove = (e) => {
-    if (selectionMode || viewMode === 'trash' || isDragging) return;
-    const currentX = e.touches[0].clientX;
-    const diff = currentX - touchStart.current;
-    // Разрешаем свайп только влево (отрицательный diff)
-    if (diff < 0 && diff > -100) {
-        setSwipeOffset(diff);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (swipeOffset < -50) {
-        setSwipeOffset(-70); // Фиксируем открытым
-    } else {
-        setSwipeOffset(0); // Возвращаем обратно
-    }
-  };
-
-  // Клик по кружочку (с защитой и анимацией)
   const handleCircleClick = (e) => {
     e.stopPropagation();
     if (selectionMode) { onSelect(task.id); return; }
@@ -139,24 +121,11 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
         setIsCompleting(false); 
     } else { 
         setIsCompleting(true); 
-        // 3 мигания по 0.3с = 0.9с. Ставим таймер чуть больше
-        timerRef.current = setTimeout(() => { actions.complete(task); setIsCompleting(false); }, 1000); 
+        timerRef.current = setTimeout(() => { actions.complete(task); setIsCompleting(false); }, 1500); 
     }
   };
 
-  const dndStyle = { 
-      transform: CSS.Transform.toString(transform), 
-      transition: isDragging ? 'none' : 'transform 0.2s ease', 
-      zIndex: isDragging ? 50 : 'auto', 
-      opacity: isDragging ? 0.8 : 1 
-  };
-
-  // Сдвиг для свайпа применяется внутри элемента
-  const contentStyle = {
-      transform: `translateX(${swipeOffset}px)`,
-      transition: 'transform 0.2s ease-out'
-  };
-  
+  const style = { transform: CSS.Transform.toString(transform), transition: isDragging ? 'none' : 'all 0.3s ease', zIndex: isDragging ? 50 : 'auto', opacity: isDragging ? 0.8 : 1 };
   const isOverdue = task.next_run && new Date(task.next_run) < new Date() && !task.completed;
   
   let circleClass = "mt-0.5 shrink-0 w-[24px] h-[24px] rounded-full border-2 flex items-center justify-center transition-all duration-300 ";
@@ -166,72 +135,48 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   else circleClass += "border-gray-300 hover:border-blue-500 bg-transparent";
 
   return (
-    <div ref={setNodeRef} style={dndStyle} {...attributes} {...listeners} className="relative">
-      
-      {/* КНОПКА УДАЛЕНИЯ (СЗАДИ) */}
-      {!isDragging && !selectionMode && (
-          <div className="absolute inset-y-0 right-0 w-[70px] bg-red-500 rounded-r-xl flex items-center justify-center text-white z-0">
-              <button className="w-full h-full flex items-center justify-center" onClick={() => actions.delete(task.id)}>
-                  <Trash2 size={20}/>
-              </button>
-          </div>
+    <div ref={setNodeRef} style={style} onClick={(e) => selectionMode && onSelect(task.id)} className={`group w-full bg-white rounded-xl p-3 shadow-sm flex items-start gap-3 transition-all ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
+      {!selectionMode && !viewMode.includes('trash') && viewMode !== 'completed' && (
+        <div {...attributes} {...listeners} style={{ touchAction: 'none' }} className="mt-1 p-2 -ml-2 text-gray-300 cursor-grab active:cursor-grabbing touch-none"><GripVertical size={20} /></div>
       )}
-
-      {/* САМА КАРТОЧКА */}
-      <div 
-        style={contentStyle}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onClick={(e) => { 
-            if (swipeOffset < 0) setSwipeOffset(0); // Закрыть свайп при клике
-            else if (selectionMode) onSelect(task.id); 
-        }} 
-        className={`relative z-10 group w-full bg-white rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}
-      >
-        {/* Кружочек */}
-        {viewMode !== 'trash' ? (
-            <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
-            {(selectionMode && isSelected || (!selectionMode && viewMode === 'completed')) && <Check size={14} className="text-white" strokeWidth={3} />}
-            {!selectionMode && (task.completed || isCompleting) && viewMode !== 'completed' && <div className={`w-2.5 h-2.5 bg-white rounded-full ${isCompleting ? '' : 'animate-in zoom-in'}`} />}
-            </button>
-        ) : (
-            selectionMode ? <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>{isSelected && <Check size={14} className="text-white" strokeWidth={3} />}</button>
-            : <button onClick={() => actions.restore(task.id)} className="mt-0.5 text-blue-600 p-1"><RotateCcw size={20} /></button>
-        )}
-        
-        {/* Текст */}
-        <div className="flex-1 min-w-0 pt-0.5">
-            <div className="flex items-center gap-1">
-            {task.priority > 0 && <span className="text-blue-600 font-bold text-[17px] mr-1">{'!'.repeat(task.priority)}</span>}
-            <div className={`text-[17px] leading-tight break-words transition-colors ${task.completed || isCompleting ? 'text-gray-400' : 'text-black'}`}>{task.title}</div>
-            {task.is_flagged && <Flag size={14} className="text-orange-500 fill-orange-500 ml-1" />}
-            </div>
-            {task.description && <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>}
-            
-            {/* Нижняя строка (Мета + Ссылка + Действие) */}
-            <div className="flex items-center flex-wrap gap-3 mt-3">
-            {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run)}</span>}
-            {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium"><RefreshCw size={10} /> {task.frequency}</span>}
-            
-            {task.url && (
-                <a href={task.url.startsWith('http') ? task.url : `https://${task.url}`} target="_blank" rel="noreferrer" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition">
-                    <LinkIcon size={12}/> Ссылка
-                </a>
-            )}
-
-            {task.type !== 'reminder' && ACTION_ICONS[task.type] && (
-                <button onPointerDown={e => e.stopPropagation()} onClick={(e) => performAction(e, task, toast)} className="text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded flex items-center gap-1 hover:bg-gray-200 transition">
-                    {ACTION_ICONS[task.type]} {task.type === 'whatsapp' ? 'WhatsApp' : task.type === 'copy' ? 'Копия' : 'Действие'}
-                </button>
-            )}
-            </div>
+      {viewMode !== 'trash' ? (
+        <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
+          {(selectionMode && isSelected || (!selectionMode && viewMode === 'completed')) && <Check size={14} className="text-white" strokeWidth={3} />}
+          {!selectionMode && (task.completed || isCompleting) && viewMode !== 'completed' && <div className={`w-2.5 h-2.5 bg-white rounded-full ${isCompleting ? '' : 'animate-in zoom-in'}`} />}
+        </button>
+      ) : (
+        selectionMode ? <button onPointerDown={e => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>{isSelected && <Check size={14} className="text-white" strokeWidth={3} />}</button>
+        : <button onClick={() => actions.restore(task.id)} className="mt-0.5 text-blue-600 p-1"><RotateCcw size={20} /></button>
+      )}
+      
+      <div className="flex-1 min-w-0 pt-0.5">
+        <div className="flex items-center gap-1">
+           {task.priority > 0 && <span className="text-blue-600 font-bold text-[17px] mr-1">{'!'.repeat(task.priority)}</span>}
+           <div className={`text-[17px] leading-tight break-words transition-colors ${task.completed || isCompleting ? 'text-gray-400' : 'text-black'}`}>{task.title}</div>
+           {task.is_flagged && <Flag size={14} className="text-orange-500 fill-orange-500 ml-1" />}
         </div>
+        {task.description && <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>}
         
-        {!selectionMode && !viewMode.includes('trash') && (
-            <button onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(task); }} className="text-gray-400 p-1 hover:bg-gray-100 rounded-full"><MoreHorizontal size={20} /></button>
-        )}
+        <div className="flex items-center flex-wrap gap-2 mt-2">
+          {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run)}</span>}
+          {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium"><RefreshCw size={10} /> {task.frequency}</span>}
+          
+          {task.url && (
+              <a href={task.url.startsWith('http') ? task.url : `https://${task.url}`} target="_blank" rel="noreferrer" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition">
+                  <LinkIcon size={12}/> Ссылка
+              </a>
+          )}
+
+          {task.type !== 'reminder' && ACTION_ICONS[task.type] && (
+            <button onPointerDown={e => e.stopPropagation()} onClick={(e) => performAction(e, task, toast)} className="text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded flex items-center gap-1 hover:bg-gray-200 transition">
+                {ACTION_ICONS[task.type]} {ACTION_NAMES[task.type]}
+            </button>
+          )}
+        </div>
       </div>
+      {!selectionMode && !viewMode.includes('trash') && (
+          <button onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(task); }} className="text-gray-400 p-1 hover:bg-gray-100 rounded-full"><MoreHorizontal size={20} /></button>
+      )}
     </div>
   );
 };
@@ -246,7 +191,11 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
       for (let i = 0; i <= 14; i++) {
           const d = new Date(today); d.setDate(today.getDate() + i);
           const s = d.getTime(), e = s + 86400000;
-          const dayTasks = tasks.filter(t => { if(!t.next_run)return false; const tm=new Date(t.next_run).getTime(); return tm>=s && tm<e; });
+          const dayTasks = tasks.filter(t => { 
+              if(!t.next_run)return false; 
+              const tm=new Date(t.next_run).getTime(); 
+              return tm>=s && tm<e; 
+          });
           let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
           if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
           result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
@@ -256,7 +205,17 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
       if(futTasks.length > 0) result.push({ title: 'Позже', data: futTasks });
       return result;
     }, [tasks]);
-    return (<div className="pb-40">{sections.map((s, i) => (<div key={i} className={`mb-2 ${s.isCompact?'opacity-50':''}`}><div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.isCompact?'text-sm py-1':''}`}><span>{s.title}</span></div>{!s.isCompact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}</div>))}</div>);
+
+    return (
+        <div className="pb-40">
+            {sections.map((s, i) => (
+                <div key={i} className={`mb-2 ${s.isCompact?'opacity-50':''}`}>
+                    <div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.isCompact?'text-sm py-1':''}`}><span>{s.title}</span></div>
+                    {!s.isCompact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}
+                </div>
+            ))}
+        </div>
+    );
 };
 
 const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (<button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform"><div className="flex justify-between w-full"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}><Icon size={18} className="text-white" /></div><span className="text-2xl font-bold text-black">{count || 0}</span></div><span className="text-gray-500 font-medium text-[15px] self-start">{title}</span></button>);
@@ -291,7 +250,6 @@ const MainApp = () => {
   const [newListTitle, setNewListTitle] = useState('');
   const [search, setSearch] = useState('');
 
-  // ВАЖНО: Настройка сенсора для Long Press (250ms)
   const sensors = useSensors(
       useSensor(PointerSensor), 
       useSensor(TouchSensor, { 
@@ -360,8 +318,8 @@ const MainApp = () => {
     restore: async (id) => { setTasks(p=>p.map(t=>t.id===id?{...t,is_deleted:false}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:false}).eq('id',id); toast("Восстановлено"); },
     delete: async (id) => { if(view==='trash'){if(!confirm("Удалить навсегда?"))return; setTasks(p=>p.filter(t=>t.id!==id)); if(isOnline)await supabase.from('tasks').delete().eq('id',id);}else{setTasks(p=>p.map(t=>t.id===id?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).eq('id',id); toast("В корзине");} },
     reorder: (e) => { const {active,over}=e; if(active.id!==over.id){setTasks(items=>{const n=arrayMove(items,items.findIndex(t=>t.id===active.id),items.findIndex(t=>t.id===over.id)); if(isOnline){const u=n.map((t,i)=>({id:t.id,position:i,title:t.title,telegram_user_id:userId})).filter(t=>!t.id.toString().startsWith('temp-')); supabase.from('tasks').upsert(u).then();} return n;});} },
-    bulkAction: async (type) => { if(!selectedIds.size)return; const ids=Array.from(selectedIds); if(type==='delete'){if(!confirm("Удалить?"))return; if(view==='trash'){setTasks(p=>p.filter(t=>!selectedIds.has(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);}}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:false}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:false}).in('id',ids);} setSelectionMode(false); setSelectedIds(new Set()); toast("Готово"); },
-    clearAll: async () => { if(!confirm("Очистить?"))return; const ids=filteredTasks(tasks,view,search).map(t=>t.id); if(view==='trash'){setTasks(p=>p.filter(t=>!ids.includes(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>ids.includes(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);} toast("Очищено"); },
+    bulkAction: async (type) => { if(!selectedIds.size)return; const ids=Array.from(selectedIds); if(type==='delete'){if(!confirm("Удалить выбранные?"))return; if(view==='trash'){setTasks(p=>p.filter(t=>!selectedIds.has(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);}}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:false}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:false}).in('id',ids);} setSelectionMode(false); setSelectedIds(new Set()); toast("Готово"); },
+    clearAll: async () => { if(!confirm("Очистить?"))return; const ids=filteredTasks.map(t=>t.id); if(view==='trash'){setTasks(p=>p.filter(t=>!ids.includes(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>ids.includes(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);} toast("Очищено"); },
     generateAi: async () => { if(!newT.title)return toast("Название?","error"); setAiLoading(true); setAiResult(''); try{const {data,error}=await supabase.functions.invoke('ai-assistant',{body:{taskTitle:newT.title,taskDescription:newT.description,type:newT.type,customInstruction:aiInstruction}}); if(error)throw error; setAiResult(data.result);}catch{toast("Ошибка AI","error");}finally{setAiLoading(false);} },
     applyAction: (type, description = '', title = '') => { setNewT(prev => ({ ...prev, type: type, description: description || prev.description, title: title || prev.title })); setActionPicker(false); if (description) toast("Шаблон применен"); }
   };
@@ -379,15 +337,24 @@ const MainApp = () => {
       setTaskModal(true);
   };
 
-  const closeModal = () => { setTaskModal(false); setEditingId(null); setNewT({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false }); setHasDate(false); setHasTime(false); setAiInstruction(''); setAiResult(''); };
-  
+  const closeModal = () => {
+      setTaskModal(false); setEditingId(null);
+      setNewT({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
+      setHasDate(false); setHasTime(false);
+      setAiInstruction(''); setAiResult('');
+  };
+
   const filteredTasks = useMemo(() => {
     let res = tasks;
-    if (search) { const l = search.toLowerCase(); res = res.filter(t => t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(l))); }
+    if (search) {
+        const l = search.toLowerCase();
+        res = res.filter(t => t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(l)));
+    }
     if (view === 'trash') return res.filter(t => t.is_deleted);
     res = res.filter(t => !t.is_deleted);
     if (view === 'completed') return res.filter(t => t.completed);
     res = res.filter(t => !t.completed);
+
     const today = new Date().setHours(0,0,0,0);
     const tomorrow = today + 86400000;
     if (view === 'today') return res.filter(t => t.next_run && new Date(t.next_run) >= today && new Date(t.next_run) < tomorrow);
@@ -404,12 +371,24 @@ const MainApp = () => {
     flagged: tasks.filter(t => !t.is_deleted && !t.completed && t.is_flagged).length,
   };
 
+  // ВАЖНО: Восстановленная переменная, которая исчезла в прошлый раз
+  const isCustomList = !['home', 'today', 'upcoming', 'all', 'flagged', 'trash', 'completed'].includes(view);
+
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
       {view === 'home' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
-          <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-black ml-1">Мои дела</h2><button onClick={() => setTemplateManager(true)} className="bg-gray-200 text-black font-bold px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 active:scale-95 transition"><Zap size={16}/> Шаблоны</button></div>
-          <div className="relative bg-[#E3E3E8] rounded-xl flex items-center px-3 py-2"><Search className="text-gray-400" size={18} /><input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск (задача, дата)" value={search} onChange={e => setSearch(e.target.value)} />{search && <button onClick={() => setSearch('')}><X size={16} className="text-gray-400"/></button>}</div>
+          <div className="flex justify-between items-center">
+             <h2 className="text-xl font-bold text-black ml-1">Мои дела</h2>
+             <button onClick={() => setTemplateManager(true)} className="bg-gray-200 text-black font-bold px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 active:scale-95 transition"><Zap size={16}/> Шаблоны</button>
+          </div>
+          
+          <div className="relative bg-[#E3E3E8] rounded-xl flex items-center px-3 py-2">
+            <Search className="text-gray-400" size={18} />
+            <input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск (задача, дата)" value={search} onChange={e => setSearch(e.target.value)} />
+            {search && <button onClick={() => setSearch('')}><X size={16} className="text-gray-400"/></button>}
+          </div>
+
           {!search ? (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -431,7 +410,9 @@ const MainApp = () => {
               </div>
               <div className="flex justify-end mb-12"><button onClick={() => actions.openListModal()} className="text-blue-600 font-medium text-lg p-2">Добавить список</button></div>
             </>
-          ) : <div className="space-y-2">{filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}</div>}
+          ) : (
+              <div className="space-y-2">{filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}</div>
+          )}
         </div>
       )}
 
@@ -448,8 +429,11 @@ const MainApp = () => {
              <h1 className="text-3xl font-bold text-blue-600">{view === 'today' ? 'Сегодня' : view === 'upcoming' ? 'Запланировано' : view === 'all' ? 'Все' : view === 'flagged' ? 'С флажком' : view === 'trash' ? 'Корзина' : view === 'completed' ? 'Выполнено' : lists.find(l=>l.id===view)?.title || 'Список'}</h1>
              {(view === 'trash' || view === 'completed') && filteredTasks.length > 0 && !selectionMode && <button onClick={actions.clearAll} className="text-red-500 text-sm font-medium bg-white/50 px-3 py-1 rounded-lg shadow-sm">Очистить</button>}
           </div>
+
           <div className="flex-1 px-4 pb-36 overflow-y-auto space-y-3">
-             {view === 'upcoming' && !selectionMode ? <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal} /> : 
+             {view === 'upcoming' && !selectionMode ? (
+                 <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal} />
+             ) : (
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
                     <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
                         {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
@@ -457,10 +441,15 @@ const MainApp = () => {
                         ))}
                     </SortableContext>
                  </DndContext>
-             }
+             )}
           </div>
+
           {!selectionMode && !['trash','completed'].includes(view) && (
-            <div className="fixed bottom-6 right-6 z-30"><button onClick={() => setTaskModal(true)} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform"><Plus size={32} /></button></div>
+            <div className="fixed bottom-6 right-6 z-30">
+               <button onClick={() => setTaskModal(true)} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
+                  <Plus size={32} />
+               </button>
+            </div>
           )}
           {selectionMode && (
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#F2F2F7] border-t border-gray-200 z-30 flex justify-between items-center">
@@ -487,12 +476,26 @@ const MainApp = () => {
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm"><input className="w-full p-4 text-[17px] border-b border-gray-100 outline-none placeholder-gray-400 text-black" placeholder="Название" value={newT.title} onChange={e => setNewT({...newT, title: e.target.value})} autoFocus /><textarea className="w-full p-4 text-[15px] outline-none resize-none h-24 placeholder-gray-400 text-black" placeholder="Заметки (или текст для AI)" value={newT.description} onChange={e => setNewT({...newT, description: e.target.value})} />
                     <div className="relative border-t border-gray-100"><div className="absolute left-4 top-3 text-gray-400"><LinkIcon size={18}/></div><input className="w-full p-3 pl-12 text-[15px] outline-none placeholder-gray-400 text-blue-600" placeholder="URL (ссылка)" value={newT.url} onChange={e => setNewT({...newT, url: e.target.value})} /></div>
                  </div>
+                 
+                 {/* AI BLOCK */}
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
-                    <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div><button onClick={() => setTemplatesPicker(true)} className="text-xs bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200"><Zap size={12}/> Шаблоны</button></div>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div>
+                        <button onClick={() => setTemplatesPicker(true)} className="text-xs bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200"><Zap size={12}/> Шаблоны</button>
+                    </div>
                     <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
-                    <div className="flex gap-2"><button onClick={actions.generateAi} disabled={aiLoading} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button><button onClick={actions.saveTemplate} className="px-3 bg-gray-100 text-gray-600 rounded-lg active:scale-95"><Zap size={20}/></button></div>
-                    {aiResult && <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in"><div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div><button onClick={() => { setNewT(p => ({...p, description: aiResult})); toast("Вставлено в заметки"); }} className="w-full bg-black text-white text-sm font-bold py-2 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={14}/> Вставить в заметки</button></div>}
+                    <div className="flex gap-2">
+                        <button onClick={actions.generateAi} disabled={aiLoading} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
+                        <button onClick={actions.saveTemplate} className="px-3 bg-gray-100 text-gray-600 rounded-lg active:scale-95"><Zap size={20}/></button>
+                    </div>
+                    {aiResult && (
+                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in">
+                            <div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div>
+                            <button onClick={() => { setNewT(p => ({...p, description: aiResult})); toast("Вставлено в заметки"); }} className="w-full bg-black text-white text-sm font-bold py-2 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={14}/> Вставить в заметки</button>
+                        </div>
+                    )}
                  </div>
+
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
                     <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center text-white"><CalendarIcon size={18} fill="white" /></div><span className="text-[17px] text-black">Дата</span></div><IOSSwitch checked={hasDate} onChange={setHasDate} /></div>
                     {hasDate && <div className="bg-white px-4 pb-3 animate-fade-in-ios"><input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" /></div>}
@@ -508,6 +511,8 @@ const MainApp = () => {
            </div>
         </div>
       )}
+
+      {/* ACTION PICKER */}
       {actionPicker && (
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center">
               <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[70vh] flex flex-col shadow-2xl animate-slide-up-ios">
@@ -518,14 +523,23 @@ const MainApp = () => {
               </div>
           </div>
       )}
+
+      {/* TEMPLATE MANAGER MODAL */}
       {templateManager && (
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-2xl h-[80vh] flex flex-col shadow-2xl animate-slide-up-ios">
                   <div className="flex justify-between items-center px-4 py-4 border-b border-gray-200"><button onClick={() => setTemplateManager(false)} className="text-blue-600 font-medium">Закрыть</button><h3 className="font-bold text-black">Управление шаблонами</h3><div className="w-8"/></div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3">{templates.length === 0 && <div className="text-center text-gray-400 mt-10">Нет шаблонов</div>}{templates.map(t => (<div key={t.id} className="bg-white p-3 rounded-xl flex items-center justify-between shadow-sm"><div><div className="font-bold text-black">{t.title}</div><div className="text-xs text-gray-500">{t.type}</div></div><button onClick={() => actions.deleteTemplate(t.id)} className="text-red-500 p-2"><Trash2 size={18}/></button></div>))}</div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                      {templates.length === 0 && <div className="text-center text-gray-400 mt-10">Нет шаблонов</div>}
+                      {templates.map(t => (
+                          <div key={t.id} className="bg-white p-3 rounded-xl flex items-center justify-between shadow-sm"><div><div className="font-bold text-black">{t.title}</div><div className="text-xs text-gray-500">{t.type}</div></div><button onClick={() => actions.deleteTemplate(t.id)} className="text-red-500 p-2"><Trash2 size={18}/></button></div>
+                      ))}
+                  </div>
               </div>
           </div>
       )}
+
+      {/* TEMPLATE PICKER MODAL */}
       {templatesPicker && (
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
               <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios max-h-[60vh] overflow-y-auto">
@@ -535,6 +549,7 @@ const MainApp = () => {
               </div>
           </div>
       )}
+
       {listModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios">
