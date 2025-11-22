@@ -6,7 +6,7 @@ import {
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
   Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles, Settings,
-  Zap, MessageCircle, Mail, Phone, Link as LinkIcon
+  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, Folder, BookmarkPlus
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -102,12 +102,54 @@ const performAction = (e, task, showToast) => {
   if (actions[task.type]) window.open(actions[task.type]);
 };
 
-// --- SMART CARD COMPONENT ---
+// --- COMPONENTS ---
+
+const SwipeableListItem = ({ list, onEdit, onDelete }) => {
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const touchStartX = useRef(0);
+  const isSwiping = useRef(false);
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+    isSwiping.current = false;
+  };
+
+  const handleTouchMove = (e) => {
+    const currentX = e.touches[0].clientX;
+    const diff = currentX - touchStartX.current;
+    if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } 
+    else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isSwiping.current) return;
+    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
+    isSwiping.current = false;
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-xl mb-2">
+      <div className="absolute inset-y-0 right-0 w-[70px] bg-red-500 flex items-center justify-center text-white z-0 rounded-r-xl">
+          <button className="w-full h-full flex items-center justify-center" onClick={() => onDelete(list.id)}><Trash2 size={20}/></button>
+      </div>
+      <div 
+        style={{ transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' }}
+        onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list.id); }}
+        className="relative z-10 bg-white p-4 flex items-center gap-3 active:bg-gray-50 transition-colors rounded-xl shadow-sm"
+      >
+        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
+        <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
+        <ChevronRight size={16} className="text-gray-300" />
+      </div>
+    </div>
+  );
+};
+
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
   
-  // Свайп логика
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
   const isSwiping = useRef(false);
@@ -228,7 +270,6 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
-// --- SCHEDULED VIEW ---
 const ScheduledView = ({ tasks, actions, onEdit }) => {
     const sections = useMemo(() => {
       const today = new Date(); today.setHours(0,0,0,0);
@@ -267,20 +308,6 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
 
 const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (<button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform"><div className="flex justify-between w-full"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}><Icon size={18} className="text-white" /></div><span className="text-2xl font-bold text-black">{count || 0}</span></div><span className="text-gray-500 font-medium text-[15px] self-start">{title}</span></button>);
 const UserListItem = ({ list, count, onClick }) => (<div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer"><div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div><span className="flex-1 text-[17px] font-medium text-black">{list.title}</span><span className="text-gray-400 text-[15px]">{count || 0}</span><ChevronRight size={16} className="text-gray-300" /></div>);
-const SwipeableListItem = ({ list, onEdit, onDelete }) => {
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const touchStartX = useRef(0);
-  const isSwiping = useRef(false);
-  const handleTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; isSwiping.current = false; };
-  const handleTouchMove = (e) => { const diff = e.touches[0].clientX - touchStartX.current; if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; } };
-  const handleTouchEnd = () => { if (!isSwiping.current) return; if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0); isSwiping.current = false; };
-  return (
-    <div className="relative overflow-hidden rounded-xl mb-2">
-      <div className="absolute inset-y-0 right-0 w-[70px] bg-red-500 flex items-center justify-center text-white z-0 rounded-r-xl"><button className="w-full h-full flex items-center justify-center" onClick={() => onDelete(list.id)}><Trash2 size={20}/></button></div>
-      <div style={{ transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' }} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list.id); }} className="relative z-10 bg-white p-4 flex items-center gap-3 active:bg-gray-50 transition-colors rounded-xl shadow-sm"><div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div><span className="flex-1 text-[17px] font-medium text-black">{list.title}</span><ChevronRight size={16} className="text-gray-300" /></div>
-    </div>
-  );
-};
 
 // --- 3. MAIN LOGIC ---
 const MainApp = () => {
@@ -411,6 +438,7 @@ const MainApp = () => {
 
   const filteredTasks = useMemo(() => {
     let res = tasks;
+    // GLOBAL SEARCH
     if (search) {
         const l = search.toLowerCase();
         return tasks.filter(t => 
@@ -577,7 +605,7 @@ const MainApp = () => {
                           <SwipeableListItem 
                               key={l.id} 
                               list={l} 
-                              onEdit={(lst) => actions.openListModal(lst)} 
+                              onEdit={(lstId) => actions.openListModal(lstId)} 
                               onDelete={(id) => { setEditingListId(id); actions.deleteList(id); }}
                           />
                       ))}
@@ -611,13 +639,19 @@ const MainApp = () => {
                      </div>
                  </div>
 
-                 {/* AI BLOCK (No template button here anymore) */}
+                 {/* AI BLOCK (BUTTON MOVED TO TOP-RIGHT) */}
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div>
+                        {/* SAVE AS TEMPLATE BUTTON (MOVED HERE) */}
+                        <button onClick={actions.saveTemplate} className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200 active:scale-95 transition">
+                            <BookmarkPlus size={14}/> Сохранить шаблон
+                        </button>
                     </div>
                     <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
-                    <button onClick={actions.generateAi} disabled={aiLoading} className="w-full bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
+                    <div className="flex gap-2">
+                        <button onClick={actions.generateAi} disabled={aiLoading} className="w-full bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
+                    </div>
                     {aiResult && (
                         <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in">
                             <div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div>
@@ -634,7 +668,7 @@ const MainApp = () => {
                  </div>
 
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
-                    {/* LIST SELECTOR */}
+                    {/* LIST SELECTOR (NEW CLICKABLE ROW) */}
                     <div onClick={() => setListPicker(true)} className="bg-white p-3.5 flex justify-between items-center cursor-pointer active:bg-gray-50">
                         <span className="text-[17px] text-black">Список</span>
                         <div className="flex items-center gap-1 relative">
@@ -696,7 +730,7 @@ const MainApp = () => {
           </div>
       )}
 
-      {/* LIST PICKER MODAL */}
+      {/* LIST PICKER MODAL (NEW NESTED MODAL) */}
       {listPicker && (
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[70] flex items-end sm:items-center justify-center">
               <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[70vh] flex flex-col shadow-2xl animate-slide-up-ios">
