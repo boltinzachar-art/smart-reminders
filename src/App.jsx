@@ -24,7 +24,7 @@ const ToastProvider = ({ children }) => {
     <ToastContext.Provider value={show}>
       {children}
       {msg && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg z-[100] text-sm font-bold animate-fade-in-ios flex items-center gap-2 ${msg.type === 'error' ? 'bg-red-500 text-white' : 'bg-black/80 text-white backdrop-blur'}`}>
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg z-[100] text-sm font-bold animate-in fade-in slide-in-from-top-5 flex items-center gap-2 ${msg.type === 'error' ? 'bg-red-500 text-white' : 'bg-black/80 text-white backdrop-blur'}`}>
           {msg.type === 'error' ? <AlertTriangle size={16}/> : <CheckCircle2 size={16}/>} {msg.text}
         </div>
       )}
@@ -42,12 +42,35 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// --- 2. UI COMPONENTS ---
+// --- 2. UI COMPONENTS (ВОТ ОНИ ВЕРНУЛИСЬ!) ---
 
 const IOSSwitch = ({ checked, onChange }) => (
   <button onClick={() => onChange(!checked)} className={`w-[51px] h-[31px] rounded-full p-0.5 transition-colors duration-300 focus:outline-none ${checked ? 'bg-[#34C759]' : 'bg-[#E9E9EA]'}`}>
     <div className={`w-[27px] h-[27px] bg-white rounded-full shadow-sm transition-transform duration-300 ${checked ? 'translate-x-[20px]' : 'translate-x-0'}`} />
   </button>
+);
+
+const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
+  <button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform">
+    <div className="flex justify-between w-full">
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}>
+        <Icon size={18} className="text-white" />
+      </div>
+      <span className="text-2xl font-bold text-black">{count || 0}</span>
+    </div>
+    <span className="text-gray-500 font-medium text-[15px] self-start">{title}</span>
+  </button>
+);
+
+const UserListItem = ({ list, count, onClick }) => (
+  <div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
+    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+      <ListIcon size={16} className="text-blue-600" />
+    </div>
+    <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
+    <span className="text-gray-400 text-[15px]">{count || 0}</span>
+    <ChevronRight size={16} className="text-gray-300" />
+  </div>
 );
 
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
@@ -121,7 +144,6 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
       </div>
       {!selectionMode && !viewMode.includes('trash') && (
           <div className="flex gap-1">
-             {/* Иконка ИИ УБРАНА отсюда */}
              <button onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(task); }} className="text-gray-400 p-1 hover:bg-gray-100 rounded-full"><MoreHorizontal size={20} /></button>
           </div>
       )}
@@ -141,14 +163,12 @@ const MainApp = () => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   
-  // Modals
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
   const [aiModal, setAiModal] = useState(false);
   const [aiData, setAiData] = useState({ loading: false, res: '' });
   const [editingId, setEditingId] = useState(null);
 
-  // New Task Form
   const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
@@ -187,7 +207,7 @@ const MainApp = () => {
     fetchData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
 
-  // Actions
+  // Logic Actions
   const actions = {
     saveTask: async () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
@@ -302,7 +322,6 @@ const MainApp = () => {
     }
   };
 
-  // AI FUNCTION - Uses current form data
   const handleAiGen = async () => {
       if (!newT.title) return toast("Напишите название для ИИ", "error");
       setAiModal(true); setAiData({ loading: true, res: '' });
@@ -462,7 +481,7 @@ const MainApp = () => {
         </div>
       )}
 
-      {/* TASK MODAL (IOS) */}
+      {/* TASK MODAL */}
       {taskModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
            <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[90vh] flex flex-col shadow-2xl animate-slide-up-ios">
@@ -485,12 +504,10 @@ const MainApp = () => {
                     <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Действие</span><div className="flex items-center gap-1 relative"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.type} onChange={e => setNewT({...newT, type: e.target.value})}><option value="reminder">Нет</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option><option value="web_search">Поиск</option></select><ChevronRight size={16} className="text-gray-400 absolute right-0" /></div></div>
                  </div>
               </div>
-              {/* NEW BOTTOM BAR WITH AI */}
               <div className="flex justify-between items-center px-6 py-4 bg-[#F2F2F7] pb-8">
                   <button onClick={() => setHasDate(!hasDate)} className="text-blue-600 active:opacity-50 transition-opacity"><CalendarIcon size={28} /></button>
                   <button onClick={() => setNewT({...newT, priority: newT.priority === 3 ? 0 : newT.priority + 1})} className={`transition-colors ${newT.priority > 0 ? 'text-blue-600' : 'text-blue-600'}`}><Flag size={28} className={newT.priority > 0 ? 'fill-blue-600' : ''} /></button>
                   <button onClick={() => { /* Camera Logic */ }} className="text-blue-600 active:opacity-50 transition-opacity"><Camera size={28} /></button>
-                  {/* AI MAGIC BUTTON */}
                   <button onClick={handleAiGen} className="text-purple-600 active:scale-90 transition-transform bg-purple-100 p-2 rounded-full"><Wand2 size={24} /></button>
               </div>
            </div>
@@ -516,8 +533,7 @@ const MainApp = () => {
                   {aiData.loading ? (
                       <div className="flex flex-col items-center py-8 text-gray-500"><Loader2 className="animate-spin mb-2" size={32} /><p>Думаю...</p></div>
                   ) : (
-                      <div className="space-y-4"><div className="bg-gray-50 p-4 rounded-xl text-gray-800 text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto border border-gray-100">{aiData.res || "Ошибка"}</div>
-                      <button onClick={() => { setNewT(p => ({...p, description: aiData.res})); setAiModal(false); toast("Вставлено в заметки"); }} className="w-full bg-black text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={18} /> Вставить в описание</button></div>
+                      <div className="space-y-4"><div className="bg-gray-50 p-4 rounded-xl text-gray-800 text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto border border-gray-100">{aiData.res || "Ошибка"}</div><button onClick={() => { setNewT(p => ({...p, description: aiData.res})); setAiModal(false); toast("Вставлено в заметки"); }} className="w-full bg-black text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={18} /> Вставить в описание</button></div>
                   )}
               </div>
           </div>
