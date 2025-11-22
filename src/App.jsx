@@ -633,7 +633,7 @@ const MainApp = () => {
                  {/* TEMPLATES BLOCK */}
                  <div className="bg-white rounded-xl p-3.5 shadow-sm flex justify-between items-center active:bg-gray-50 transition cursor-pointer" onClick={() => setTemplatesPicker(true)}>
                      <div className="flex items-center gap-3">
-                         <div className="w-8 h-8 rounded bg-purple-500 flex items-center justify-center text-white"><Zap size={18} fill="white"/></div>
+                         <div className="w-8 h-8 rounded bg-grey-500 flex items-center justify-center text-white"><Zap size={18} fill="white"/></div>
                          <span className="text-[17px] text-black">Шаблоны</span>
                      </div>
                      <ChevronRight size={16} className="text-gray-300" />
