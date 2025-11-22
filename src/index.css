@@ -2,53 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
-<<<<<<< HEAD
-/* ГЛОБАЛЬНЫЕ ФИКСЫ */
-=======
->>>>>>> 2e191e500a17d68fb1061fd618f9dfb42f2c7891
 html, body, #root {
   height: 100%;
   width: 100%;
   margin: 0;
   padding: 0;
-<<<<<<< HEAD
-  background-color: #F2F2F7; /* Цвет фона iOS */
-  
-  /* Блокируем пружинистый скролл всего окна */
-  overflow: hidden; 
+  background-color: #F2F2F7;
+  overflow: hidden;
   overscroll-behavior: none;
   touch-action: pan-x pan-y;
-  
-  /* Запрещаем выделять текст (чтобы не мешало тапать) */
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* АНИМАЦИИ */
+/* --- АНИМАЦИИ --- */
 
-/* 1. Мигание кружочка (3 раза) */
-=======
-  background-color: #F2F2F7;
-  overflow: hidden; /* Блокируем скролл тела */
-  overscroll-behavior: none;
-  touch-action: pan-x pan-y;
-  -webkit-user-select: none; /* Защита от выделения текста при свайпах */
-  user-select: none;
+/* Мигание: Прозрачный -> Синий -> Прозрачный */
+@keyframes blink-blue {
+  0%, 100% { border-color: #D1D5DB; background-color: transparent; }
+  50% { border-color: #3B82F6; background-color: #3B82F6; }
 }
 
-/* Анимации */
->>>>>>> 2e191e500a17d68fb1061fd618f9dfb42f2c7891
-@keyframes blink-3 {
-  0%, 100% { background-color: transparent; border-color: #D1D5DB; }
-  50% { background-color: #3B82F6; border-color: #3B82F6; }
-}
-<<<<<<< HEAD
+/* Класс для мигания (3 раза по 0.3с = 0.9с) */
 .animate-blink-3 {
-  animation: blink-3 0.5s ease-in-out 3;
+  animation: blink-blue 0.3s ease-in-out 3;
 }
 
-/* 2. Плавный выезд модалки снизу (физика Apple) */
+/* Плавное появление */
 @keyframes slide-up-ios {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
@@ -57,31 +38,11 @@ html, body, #root {
   animation: slide-up-ios 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
 
-/* 3. Зум для маленьких окон */
-@keyframes zoom-in-ios {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-.animate-zoom-in-ios {
-  animation: zoom-in-ios 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-}
-
-/* 4. Плавное появление фона */
 .animate-fade-in-ios {
   animation: fadeIn 0.3s ease-out forwards;
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* Скрываем скроллбар */
+/* Скроллбар */
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-=======
-.animate-blink-3 { animation: blink-3 0.5s ease-in-out 3; }
-
-.animate-slide-up { animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
-@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-
-/* Кастомный скроллбар (скрытый) */
-.hide-scrollbar::-webkit-scrollbar { display: none; }
-.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
->>>>>>> 2e191e500a17d68fb1061fd618f9dfb42f2c7891
