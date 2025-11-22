@@ -18,18 +18,16 @@ html, body, #root {
 
 /* --- АНИМАЦИИ --- */
 
-/* Мигание: Прозрачный -> Синий -> Прозрачный */
 @keyframes blink-blue {
   0%, 100% { border-color: #D1D5DB; background-color: transparent; }
   50% { border-color: #3B82F6; background-color: #3B82F6; }
 }
 
-/* Класс для мигания (3 раза по 0.3с = 0.9с) */
+/* ИЗМЕНЕНО: 0.6s вместо 0.3s */
 .animate-blink-3 {
-  animation: blink-blue 0.3s ease-in-out 3;
+  animation: blink-blue 0.6s ease-in-out 3;
 }
 
-/* Плавное появление */
 @keyframes slide-up-ios {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
@@ -43,6 +41,5 @@ html, body, #root {
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* Скроллбар */
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
