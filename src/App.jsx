@@ -4,8 +4,8 @@ import WebApp from '@twa-dev/sdk';
 import { 
   Plus, Search, ExternalLink, RefreshCw, RotateCcw, Trash2, GripVertical, 
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
-  Flag, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
-  Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles
+  Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
+  Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -48,6 +48,29 @@ const IOSSwitch = ({ checked, onChange }) => (
   <button onClick={() => onChange(!checked)} className={`w-[51px] h-[31px] rounded-full p-0.5 transition-colors duration-300 focus:outline-none ${checked ? 'bg-[#34C759]' : 'bg-[#E9E9EA]'}`}>
     <div className={`w-[27px] h-[27px] bg-white rounded-full shadow-sm transition-transform duration-300 ${checked ? 'translate-x-[20px]' : 'translate-x-0'}`} />
   </button>
+);
+
+const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
+  <button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform">
+    <div className="flex justify-between w-full">
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}>
+        <Icon size={18} className="text-white" />
+      </div>
+      <span className="text-2xl font-bold text-black">{count || 0}</span>
+    </div>
+    <span className="text-gray-500 font-medium text-[15px] self-start">{title}</span>
+  </button>
+);
+
+const UserListItem = ({ list, count, onClick }) => (
+  <div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
+    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+      <ListIcon size={16} className="text-blue-600" />
+    </div>
+    <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
+    <span className="text-gray-400 text-[15px]">{count || 0}</span>
+    <ChevronRight size={16} className="text-gray-300" />
+  </div>
 );
 
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
@@ -128,7 +151,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   );
 };
 
-const ScheduledView = ({ tasks, actions, onEdit }) => {
+const ScheduledView = ({ tasks, actions, onEdit, onAiGenerate }) => {
   const sections = useMemo(() => {
     const today = new Date(); today.setHours(0,0,0,0);
     const result = [];
@@ -162,35 +185,12 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
                 <div className={`px-4 py-2 font-bold text-lg flex justify-between ${section.isOverdue ? 'text-red-500' : 'text-black'} ${section.isCompact ? 'text-sm py-1' : ''}`}>
                     <span>{section.title}</span>
                 </div>
-                {!section.isCompact && <div className="px-4 space-y-2">{section.data.map(task => <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} />)}</div>}
+                {!section.isCompact && <div className="px-4 space-y-2">{section.data.map(task => <TaskItem key={task.id} task={task} actions={actions} viewMode="scheduled" onEdit={onEdit} onAiGenerate={onAiGenerate} />)}</div>}
             </div>
         ))}
     </div>
   );
 };
-
-const SmartListCard = ({ title, count, icon: Icon, color, onClick }) => (
-  <button onClick={onClick} className="bg-white p-3 rounded-xl shadow-sm flex flex-col justify-between h-[80px] active:scale-95 transition-transform">
-    <div className="flex justify-between w-full">
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}>
-        <Icon size={18} className="text-white" />
-      </div>
-      <span className="text-2xl font-bold text-black">{count || 0}</span>
-    </div>
-    <span className="text-gray-500 font-medium text-[15px] self-start">{title}</span>
-  </button>
-);
-
-const UserListItem = ({ list, count, onClick }) => (
-  <div onClick={onClick} className="group bg-white p-3 rounded-xl flex items-center gap-3 active:bg-gray-50 transition-colors cursor-pointer">
-    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-      <ListIcon size={16} className="text-blue-600" />
-    </div>
-    <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
-    <span className="text-gray-400 text-[15px]">{count || 0}</span>
-    <ChevronRight size={16} className="text-gray-300" />
-  </div>
-);
 
 // --- 3. MAIN LOGIC ---
 
@@ -201,24 +201,22 @@ const MainApp = () => {
   const [lists, setLists] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [userId, setUserId] = useState(null);
+  
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
+  const [aiModal, setAiModal] = useState(false);
+  const [aiData, setAiData] = useState({ loading: false, res: '' });
   const [editingId, setEditingId] = useState(null);
-  
+  const [aiInstruction, setAiInstruction] = useState('');
+
   const [newT, setNewT] = useState({ title: '', description: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
   const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
   const [timeVal, setTimeVal] = useState(new Date().toTimeString().slice(0, 5));
-  
-  // AI State
-  const [aiInstruction, setAiInstruction] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiResult, setAiResult] = useState('');
-
   const [newListTitle, setNewListTitle] = useState('');
   const [search, setSearch] = useState('');
 
@@ -365,7 +363,7 @@ const MainApp = () => {
         toast("Список очищен");
     },
     generateAi: async () => {
-        if (!newT.title) { toast("Сначала введите название", "error"); return; }
+        if (!newT.title) { toast("Напишите название для ИИ", "error"); return; }
         setAiLoading(true);
         try {
             const { data, error } = await supabase.functions.invoke('ai-assistant', {
@@ -503,12 +501,17 @@ const MainApp = () => {
 
           <div className="flex-1 px-4 pb-36 overflow-y-auto space-y-3">
              {view === 'upcoming' && !selectionMode ? (
-                 <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal} onAiGenerate={handleAiGen} />
+                 <div className="pb-20">{scheduledSections.map((s,i) => (
+                    <div key={i} className={`mb-2 ${s.compact?'opacity-50':''}`}>
+                        <div className={`px-4 py-2 font-bold text-lg flex justify-between ${s.isOverdue?'text-red-500':'text-black'} ${s.compact?'text-sm py-1':''}`}><span>{s.title}</span></div>
+                        {!s.compact && <div className="px-4 space-y-2">{s.data.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="scheduled" onEdit={openEditModal} />)}</div>}
+                    </div>
+                 ))}</div>
              ) : (
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
                     <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
                         {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
-                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal} />
+                            <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
                         ))}
                     </SortableContext>
                  </DndContext>
@@ -533,7 +536,7 @@ const MainApp = () => {
       {/* TASK MODAL */}
       {taskModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center">
-           <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[95vh] flex flex-col shadow-2xl animate-slide-up-ios">
+           <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[90vh] flex flex-col shadow-2xl animate-slide-up-ios">
               <div className="flex justify-between items-center px-4 py-4 bg-[#F2F2F7] rounded-t-2xl border-b border-gray-200/50">
                  <button onClick={closeModal} className="text-blue-600 text-[17px]">Отмена</button>
                  <span className="font-bold text-black text-[17px]">{editingId ? 'Правка' : 'Новое'}</span>
@@ -544,13 +547,13 @@ const MainApp = () => {
                  
                  {/* AI BLOCK */}
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
-                    <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> Текст действия (AI)</div>
+                    <div className="flex items-center gap-2 text-purple-600 font-bold"><Wand2 size={18}/> Текст действия (AI)</div>
                     <input className="w-full bg-purple-50 rounded-lg p-3 text-sm outline-none placeholder-purple-300 text-black" placeholder="Уточнение (например: вежливо для жильцов)" value={aiInstruction} onChange={e => setAiInstruction(e.target.value)}/>
                     <button onClick={actions.generateAi} disabled={aiLoading} className="w-full bg-purple-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">{aiLoading ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} {aiLoading ? 'Думаю...' : 'Сгенерировать'}</button>
                     {aiResult && (
                         <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 animate-in fade-in">
                             <div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{aiResult}</div>
-                            <button onClick={() => setNewT({...newT, description: aiResult})} className="w-full bg-black text-white text-sm font-bold py-2 rounded-lg flex items-center justify-center gap-2"><ArrowDown size={14}/> Вставить в заметки</button>
+                            <button onClick={() => { setNewT(p => ({...p, description: aiResult})); toast("Вставлено в заметки"); }} className="w-full bg-black text-white text-sm font-bold py-2 rounded-lg flex items-center justify-center gap-2 active:scale-95 transition"><ArrowDown size={14}/> Вставить в заметки</button>
                         </div>
                     )}
                  </div>
@@ -564,4 +567,29 @@ const MainApp = () => {
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
                     <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-orange-500 flex items-center justify-center text-white"><Flag size={18} fill="white" /></div><span className="text-[17px] text-black">Флаг</span></div><IOSSwitch checked={newT.is_flagged} onChange={v => setNewT({...newT, is_flagged: v})} /></div>
                     <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Приоритет</span><div className="flex items-center gap-1"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.priority} onChange={e => setNewT({...newT, priority: parseInt(e.target.value)})}>{['Нет','Низкий','Средний','Высокий'].map((v,i)=><option key={i} value={i}>{v}</option>)}</select><span className="absolute right-9 text-gray-500">{['Нет','!','!!','!!!'][newT.priority]}</span><ChevronRight size={16} className="text-gray-400 absolute right-3" /></div></div>
-                    <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Действие</span><div className="flex items-center gap-1 relative"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.type} onChange={e => setNewT({...newT, type: e.target.value})
+                    <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Действие</span><div className="flex items-center gap-1 relative"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.type} onChange={e => setNewT({...newT, type: e.target.value})}><option value="reminder">Нет</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option><option value="web_search">Поиск</option></select><ChevronRight size={16} className="text-gray-400 absolute right-0" /></div></div>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {listModal && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+           <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios">
+              <h3 className="text-lg font-bold text-center mb-4">Новый список</h3>
+              <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
+              <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
+              <div className="flex gap-2"><button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button><button onClick={actions.createList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button></div>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default () => (
+  <React.StrictMode>
+    <ErrorBoundary><ToastProvider><MainApp /></ToastProvider></ErrorBoundary>
+  </React.StrictMode>
+);
