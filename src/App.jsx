@@ -6,9 +6,9 @@ import {
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
   Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles, Settings,
-  Zap, MessageCircle, Mail, Phone, Link as LinkIcon
+  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, Edit2
 } from 'lucide-react';
-import { DndContext, closestCenter, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -107,13 +107,13 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
   
+  // Свайп логика
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
   const isSwiping = useRef(false);
   const timerRef = useRef(null);
   const toast = useToast();
 
-  // --- TOUCH HANDLERS (SWIPE) ---
   const handleTouchStart = (e) => {
     if (selectionMode || viewMode === 'trash' || isDragging) return;
     touchStartX.current = e.touches[0].clientX;
@@ -124,7 +124,6 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
     if (selectionMode || viewMode === 'trash' || isDragging) return;
     const currentX = e.touches[0].clientX;
     const diff = currentX - touchStartX.current;
-
     if (swipeOffset === 0 && diff < 0) {
         setSwipeOffset(Math.max(diff, -80)); 
         isSwiping.current = true;
@@ -144,7 +143,6 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
     isSwiping.current = false;
   };
 
-  // --- CLICK HANDLERS ---
   const handleMainClick = (e) => {
       if (swipeOffset < 0) {
           setSwipeOffset(0);
@@ -193,48 +191,27 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   else if (task.completed) circleClass += "bg-blue-500 border-blue-500";
   else circleClass += "border-gray-300 hover:border-blue-500 bg-transparent";
 
-  // DND атрибуты только если не режим выбора/удаления
   const dndProps = selectionMode || viewMode === 'trash' ? {} : { ...attributes, ...listeners };
 
   return (
     <div ref={setNodeRef} style={dndStyle} {...dndProps}>
-      
-      {/* КНОПКА УДАЛЕНИЯ (SWIPE BACK) */}
       {!isDragging && !selectionMode && viewMode !== 'trash' && (
           <div className="absolute inset-y-0 right-2 flex items-center justify-end z-0">
-              <button 
-                className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white shadow-sm active:scale-90 transition-transform"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => actions.delete(task.id)}
-              >
+              <button className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white shadow-sm active:scale-90 transition-transform" onPointerDown={(e) => e.stopPropagation()} onClick={() => actions.delete(task.id)}>
                   <Trash2 size={18}/>
               </button>
           </div>
       )}
-
-      {/* CARD CONTENT */}
-      <div 
-        style={contentStyle}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onClick={handleMainClick}
-        className={`relative z-10 group w-full bg-white rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}
-      >
-        {/* CIRCLE */}
+      <div style={contentStyle} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={handleMainClick} className={`relative z-10 group w-full bg-white rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
         {viewMode !== 'trash' ? (
           <button onPointerDown={(e) => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
             {(selectionMode && isSelected || (!selectionMode && viewMode === 'completed')) && <Check size={14} className="text-white" strokeWidth={3} />}
             {!selectionMode && (task.completed || isCompleting) && viewMode !== 'completed' && <div className={`w-2.5 h-2.5 bg-white rounded-full ${isCompleting ? '' : 'animate-in zoom-in'}`} />}
           </button>
         ) : (
-          selectionMode ? (
-             <button onPointerDown={(e) => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>{isSelected && <Check size={14} className="text-white" strokeWidth={3} />}</button>
-          ) : (
-             <button onClick={() => actions.restore(task.id)} className="mt-0.5 text-blue-600 p-1"><RotateCcw size={20} /></button>
-          )
+          selectionMode ? <button onPointerDown={(e) => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>{isSelected && <Check size={14} className="text-white" strokeWidth={3} />}</button>
+          : <button onClick={() => actions.restore(task.id)} className="mt-0.5 text-blue-600 p-1"><RotateCcw size={20} /></button>
         )}
-        
         <div className="flex-1 min-w-0 pt-0.5">
           <div className="flex items-center gap-1">
              {task.priority > 0 && <span className="text-blue-600 font-bold text-[17px] mr-1">{'!'.repeat(task.priority)}</span>}
@@ -242,42 +219,23 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
              {task.is_flagged && <Flag size={14} className="text-orange-500 fill-orange-500 ml-1" />}
           </div>
           {task.description && <p className="text-gray-400 font-semibold text-[13px] mt-1 line-clamp-2 leading-snug break-words">{task.description}</p>}
-          
           <div className="flex items-center flex-wrap gap-2 mt-3">
             {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run)}</span>}
             {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium"><RefreshCw size={10} /> {task.frequency}</span>}
-            
-            {task.url && (
-                <a href={task.url.startsWith('http') ? task.url : `https://${task.url}`} target="_blank" rel="noreferrer" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition">
-                    <LinkIcon size={12}/> Ссылка
-                </a>
-            )}
-
+            {task.url && <a href={task.url.startsWith('http') ? task.url : `https://${task.url}`} target="_blank" rel="noreferrer" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition"><LinkIcon size={12}/> Ссылка</a>}
             {task.type !== 'reminder' && ACTION_ICONS[task.type] && (
-              <button onPointerDown={e => e.stopPropagation()} onClick={(e) => performAction(e, task, toast)} className="text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded flex items-center gap-1 hover:bg-gray-200 transition">
-                  {ACTION_ICONS[task.type]} {ACTION_NAMES[task.type]}
-              </button>
+              <button onPointerDown={e => e.stopPropagation()} onClick={(e) => performAction(e, task, toast)} className="text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded flex items-center gap-1 hover:bg-gray-200 transition">{ACTION_ICONS[task.type]} {ACTION_NAMES[task.type]}</button>
             )}
           </div>
         </div>
-
-        {/* SETTINGS BUTTON (ISOLATED & BIGGER) */}
         {!selectionMode && !viewMode.includes('trash') && (
-            <button 
-              className="text-gray-400 p-3 -mr-2 -my-2 hover:bg-gray-100 rounded-full active:text-gray-600 touch-manipulation relative z-20" 
-              onPointerDown={(e) => e.stopPropagation()} 
-              onTouchStart={(e) => e.stopPropagation()} 
-              onClick={(e) => { e.stopPropagation(); onEdit(task); }}
-            >
-              <MoreHorizontal size={22} />
-            </button>
+            <button className="text-gray-400 p-3 -mr-2 -my-2 hover:bg-gray-100 rounded-full active:text-gray-600 touch-manipulation relative z-20" onPointerDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(task); }}><MoreHorizontal size={22} /></button>
         )}
       </div>
     </div>
   );
 };
 
-// --- SCHEDULED VIEW ---
 const ScheduledView = ({ tasks, actions, onEdit }) => {
     const sections = useMemo(() => {
       const today = new Date(); today.setHours(0,0,0,0);
@@ -287,11 +245,7 @@ const ScheduledView = ({ tasks, actions, onEdit }) => {
       for (let i = 0; i <= 14; i++) {
           const d = new Date(today); d.setDate(today.getDate() + i);
           const s = d.getTime(), e = s + 86400000;
-          const dayTasks = tasks.filter(t => { 
-              if(!t.next_run)return false; 
-              const tm=new Date(t.next_run).getTime(); 
-              return tm>=s && tm<e; 
-          });
+          const dayTasks = tasks.filter(t => { if(!t.next_run)return false; const tm=new Date(t.next_run).getTime(); return tm>=s && tm<e; });
           let title = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
           if (i === 0) title = 'Сегодня'; if (i === 1) title = 'Завтра';
           result.push({ title: title, data: dayTasks.sort((a,b) => new Date(a.next_run) - new Date(b.next_run)), isCompact: dayTasks.length === 0 });
@@ -339,19 +293,16 @@ const MainApp = () => {
   const [aiResult, setAiResult] = useState('');
   const [aiInstruction, setAiInstruction] = useState('');
   const [newT, setNewT] = useState({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false });
+  
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
   const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
   const [timeVal, setTimeVal] = useState(new Date().toTimeString().slice(0, 5));
   const [newListTitle, setNewListTitle] = useState('');
   const [search, setSearch] = useState('');
+  const [showSearch, setShowSearch] = useState(false); // State for showing search input
 
-  // ВАЖНО: PointerSensor с задержкой для DND
-  const sensors = useSensors(
-      useSensor(PointerSensor, { 
-          activationConstraint: { delay: 250, tolerance: 5 } 
-      })
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 5 } }));
 
   useEffect(() => {
     const handleStatus = () => setIsOnline(navigator.onLine);
@@ -415,7 +366,7 @@ const MainApp = () => {
     delete: async (id) => { if(view==='trash'){if(!confirm("Удалить навсегда?"))return; setTasks(p=>p.filter(t=>t.id!==id)); if(isOnline)await supabase.from('tasks').delete().eq('id',id);}else{setTasks(p=>p.map(t=>t.id===id?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).eq('id',id); toast("В корзине");} },
     reorder: (e) => { const {active,over}=e; if(active.id!==over.id){setTasks(items=>{const n=arrayMove(items,items.findIndex(t=>t.id===active.id),items.findIndex(t=>t.id===over.id)); if(isOnline){const u=n.map((t,i)=>({id:t.id,position:i,title:t.title,telegram_user_id:userId})).filter(t=>!t.id.toString().startsWith('temp-')); supabase.from('tasks').upsert(u).then();} return n;});} },
     bulkAction: async (type) => { if(!selectedIds.size)return; const ids=Array.from(selectedIds); if(type==='delete'){if(!confirm("Удалить выбранные?"))return; if(view==='trash'){setTasks(p=>p.filter(t=>!selectedIds.has(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);}}else{setTasks(p=>p.map(t=>selectedIds.has(t.id)?{...t,is_deleted:false}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:false}).in('id',ids);} setSelectionMode(false); setSelectedIds(new Set()); toast("Готово"); },
-    clearAll: async () => { if(!confirm("Очистить?"))return; const ids=filteredTasks(tasks,view,search).map(t=>t.id); if(view==='trash'){setTasks(p=>p.filter(t=>!ids.includes(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>ids.includes(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);} toast("Очищено"); },
+    clearAll: async () => { if(!confirm("Очистить?"))return; const ids=filteredTasks.map(t=>t.id); if(view==='trash'){setTasks(p=>p.filter(t=>!ids.includes(t.id))); if(isOnline)await supabase.from('tasks').delete().in('id',ids);}else{setTasks(p=>p.map(t=>ids.includes(t.id)?{...t,is_deleted:true}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:true}).in('id',ids);} toast("Очищено"); },
     generateAi: async () => { if(!newT.title)return toast("Название?","error"); setAiLoading(true); setAiResult(''); try{const {data,error}=await supabase.functions.invoke('ai-assistant',{body:{taskTitle:newT.title,taskDescription:newT.description,type:newT.type,customInstruction:aiInstruction}}); if(error)throw error; setAiResult(data.result);}catch{toast("Ошибка AI","error");}finally{setAiLoading(false);} },
     applyAction: (type, description = '', title = '') => { setNewT(prev => ({ ...prev, type: type, description: description || prev.description, title: title || prev.title })); setActionPicker(false); if (description) toast("Шаблон применен"); },
     toggleSelect: (id) => { const newSet = new Set(selectedIds); if (newSet.has(id)) newSet.delete(id); else newSet.add(id); setSelectedIds(newSet); }
@@ -443,10 +394,16 @@ const MainApp = () => {
 
   const filteredTasks = useMemo(() => {
     let res = tasks;
+    // GLOBAL SEARCH LOGIC
     if (search) {
         const l = search.toLowerCase();
-        res = res.filter(t => t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(l)));
+        // Search across ALL tasks, not just current view
+        return tasks.filter(t => 
+            !t.is_deleted && // Still allow searching deleted? Maybe no.
+            (t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(l)))
+        );
     }
+    
     if (view === 'trash') return res.filter(t => t.is_deleted);
     res = res.filter(t => !t.is_deleted);
     if (view === 'completed') return res.filter(t => t.completed);
@@ -489,24 +446,46 @@ const MainApp = () => {
       return res;
   }, [filteredTasks, view]);
 
-  const isCustomList = !['home', 'today', 'upcoming', 'all', 'flagged', 'trash', 'completed'].includes(view);
-
   return (
     <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
+      
+      {/* --- HOME SCREEN --- */}
       {view === 'home' && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
-          <div className="flex justify-between items-center">
-             <h2 className="text-xl font-bold text-black ml-1">Мои дела</h2>
-             <button onClick={() => setTemplateManager(true)} className="bg-gray-200 text-black font-bold px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 active:scale-95 transition"><Zap size={16}/> Шаблоны</button>
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300 pb-24">
+          <div className="flex justify-between items-end mb-2">
+             <h2 className="text-3xl font-bold text-black ml-1">Мои дела</h2>
+             <div className="flex gap-2">
+                {/* SEARCH TOGGLE BUTTON */}
+                <button 
+                    onClick={() => { setShowSearch(!showSearch); setSearch(''); }} 
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${showSearch ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-600'}`}
+                >
+                    <Search size={20}/>
+                </button>
+                <button onClick={() => setTemplateManager(true)} className="bg-gray-200 text-black font-bold px-3 rounded-lg text-sm flex items-center gap-1 active:scale-95 transition"><Zap size={16}/> Шаблоны</button>
+             </div>
           </div>
           
-          <div className="relative bg-[#E3E3E8] rounded-xl flex items-center px-3 py-2">
-            <Search className="text-gray-400" size={18} />
-            <input className="w-full bg-transparent pl-2 text-black placeholder-gray-500 outline-none" placeholder="Поиск (задача, дата)" value={search} onChange={e => setSearch(e.target.value)} />
-            {search && <button onClick={() => setSearch('')}><X size={16} className="text-gray-400"/></button>}
-          </div>
+          {/* SEARCH INPUT */}
+          {showSearch && (
+              <div className="animate-in fade-in slide-in-from-top-2">
+                  <input 
+                    className="w-full bg-white p-3 rounded-xl text-black placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" 
+                    placeholder="Поиск задач..." 
+                    value={search} 
+                    onChange={e => setSearch(e.target.value)}
+                    autoFocus
+                  />
+              </div>
+          )}
 
-          {!search ? (
+          {/* IF SEARCHING - SHOW LIST, ELSE SHOW HOME GRID */}
+          {search ? (
+              <div className="space-y-2">
+                  {filteredTasks.length === 0 && <div className="text-center text-gray-400 py-4">Ничего не найдено</div>}
+                  {filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}
+              </div>
+          ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <SmartListCard title="Сегодня" count={counts.today} icon={CalendarIcon} color="bg-blue-500" onClick={() => setView('today')} />
@@ -514,6 +493,7 @@ const MainApp = () => {
                 <SmartListCard title="Все" count={counts.all} icon={Inbox} color="bg-gray-500" onClick={() => setView('all')} />
                 <SmartListCard title="С флажком" count={counts.flagged} icon={Flag} color="bg-orange-500" onClick={() => setView('flagged')} />
               </div>
+
               <div>
                  <h2 className="text-xl font-bold text-black mb-2 ml-1">Списки</h2>
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm">
@@ -525,21 +505,26 @@ const MainApp = () => {
                    </div>
                  </div>
               </div>
-              <div className="flex justify-end mb-12"><button onClick={() => actions.openListModal()} className="text-blue-600 font-medium text-lg p-2">Добавить список</button></div>
+              
+              {/* SETTINGS BUTTON (LIST MANAGEMENT) */}
+              <div className="mt-4">
+                  <button onClick={() => actions.openListModal()} className="w-full bg-white p-3 rounded-xl text-blue-600 font-bold text-center shadow-sm active:scale-98 transition">
+                      Настроить списки
+                  </button>
+              </div>
             </>
-          ) : (
-              <div className="space-y-2">{filteredTasks.map(t => <TaskItem key={t.id} task={t} actions={actions} viewMode="search" onEdit={openEditModal}/>)}</div>
           )}
         </div>
       )}
 
-      {/* --- LIST DETAIL --- */}
+      {/* --- LIST DETAIL SCREEN --- */}
       {view !== 'home' && (
         <div className="flex-1 flex flex-col h-full animate-in slide-in-from-right-8 duration-300 relative">
+          {/* Same List Detail UI ... */}
           <div className="px-4 pt-2 pb-2 bg-[#F2F2F7] sticky top-0 z-20 flex items-center justify-between">
              <div className="flex items-center gap-2"><button onClick={() => {setView('home'); setSelectionMode(false);}} className="flex items-center text-blue-600 font-medium text-[17px] -ml-2"><ChevronLeft size={24} /> Списки</button></div>
              <div className="flex items-center gap-4">
-                 {isCustomList && <button onClick={() => actions.openListModal(view)} className="text-blue-600"><Settings size={22}/></button>}
+                 {/* Settings removed from here, moved to home */}
                  {filteredTasks.length > 0 && <button onClick={() => {setSelectionMode(!selectionMode); setSelectedIds(new Set());}} className="text-blue-600 font-medium text-[17px]">{selectionMode ? 'Готово' : 'Выбрать'}</button>}
              </div>
           </div>
@@ -562,6 +547,7 @@ const MainApp = () => {
              )}
           </div>
 
+          {/* BUTTONS FOR LIST VIEW */}
           {!selectionMode && !['trash','completed'].includes(view) && (
             <div className="fixed bottom-6 right-6 z-30">
                <button onClick={() => setTaskModal(true)} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
@@ -578,6 +564,15 @@ const MainApp = () => {
                 </div>
             </div>
           )}
+        </div>
+      )}
+      
+      {/* FAB ON HOME SCREEN */}
+      {view === 'home' && (
+        <div className="fixed bottom-6 right-6 z-30">
+           <button onClick={() => setTaskModal(true)} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
+              <Plus size={32} />
+           </button>
         </div>
       )}
 
@@ -681,8 +676,13 @@ const MainApp = () => {
               <h3 className="text-lg font-bold text-center mb-4 text-black">{editingListId ? 'Название списка' : 'Новый список'}</h3>
               <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
               <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-black" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
-              <div className="flex gap-2"><button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button><button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button></div>
-              {editingListId && <button onClick={actions.deleteList} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
+              <div className="flex gap-2">
+                  <button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button>
+                  <button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button>
+              </div>
+              {editingListId && (
+                  <button onClick={actions.deleteList} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>
+              )}
            </div>
         </div>
       )}
