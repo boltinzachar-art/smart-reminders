@@ -50,18 +50,16 @@ const IOSSwitch = ({ checked, onChange }) => (
 );
 
 const TIMEZONES = [
-    { label: 'Москва (MSK)', value: 'Europe/Moscow' },
-    { label: 'Калининград (KALT)', value: 'Europe/Kaliningrad' },
-    { label: 'Самара (SAMT)', value: 'Europe/Samara' },
-    { label: 'Екатеринбург (YEKT)', value: 'Asia/Yekaterinburg' },
-    { label: 'Омск (OMST)', value: 'Asia/Omsk' },
-    { label: 'Красноярск (KRAT)', value: 'Asia/Krasnoyarsk' },
-    { label: 'Иркутск (IRKT)', value: 'Asia/Irkutsk' },
-    { label: 'Владивосток (VLAT)', value: 'Asia/Vladivostok' },
-    { label: 'Дубай (GST)', value: 'Asia/Dubai' },
-    { label: 'Бангкок (ICT)', value: 'Asia/Bangkok' },
-    { label: 'Бали (WITA)', value: 'Asia/Makassar' },
-    { label: 'Лондон (UTC)', value: 'UTC' },
+    { label: 'UTC+2 (Калининград)', value: 'Europe/Kaliningrad' },
+    { label: 'UTC+3 (Москва)', value: 'Europe/Moscow' },
+    { label: 'UTC+4 (Самара, Дубай)', value: 'Europe/Samara' },
+    { label: 'UTC+5 (Екатеринбург)', value: 'Asia/Yekaterinburg' },
+    { label: 'UTC+6 (Омск)', value: 'Asia/Omsk' },
+    { label: 'UTC+7 (Красноярск, Бангкок)', value: 'Asia/Krasnoyarsk' },
+    { label: 'UTC+8 (Иркутск, Бали)', value: 'Asia/Irkutsk' },
+    { label: 'UTC+9 (Токио)', value: 'Asia/Tokyo' },
+    { label: 'UTC+10 (Владивосток)', value: 'Asia/Vladivostok' },
+    { label: 'UTC+0 (Лондон)', value: 'UTC' },
 ];
 
 const ACTION_ICONS = {
@@ -126,25 +124,45 @@ const performAction = (e, task, showToast) => {
 const SwipeableListItem = ({ list, onEdit, onDelete }) => {
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
   const isSwiping = useRef(false);
 
   const handleTouchStart = (e) => {
+    if (selectionMode || viewMode === 'trash' || isDragging) return;
     touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY; // Запоминаем Y
     isSwiping.current = false;
   };
 
   const handleTouchMove = (e) => {
+    if (selectionMode || viewMode === 'trash' || isDragging) return;
+    
     const currentX = e.touches[0].clientX;
-    const diff = currentX - touchStartX.current;
-    if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } 
-    else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; }
+    const currentY = e.touches[0].clientY;
+    
+    const diffX = currentX - touchStartX.current;
+    const diffY = currentY - touchStartY.current;
+
+    // ГЛАВНЫЙ ФИКС:
+    // Если движение по вертикали больше, чем по горизонтали -> это скролл ленты.
+    // Игнорируем свайп карточки.
+    if (Math.abs(diffY) > Math.abs(diffX)) return;
+
+    // Логика свайпа влево/вправо
+    if (swipeOffset === 0 && diffX < 0) {
+        setSwipeOffset(Math.max(diffX, -80)); 
+        isSwiping.current = true;
+    } else if (swipeOffset < 0) {
+        setSwipeOffset(Math.min(Math.max(-70 + diffX, -80), 0)); 
+        isSwiping.current = true;
+    }
   };
 
-  const handleTouchEnd = () => {
-    if (!isSwiping.current) return;
-    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
-    isSwiping.current = false;
-  };
+const handleTouchEnd = () => {
+  if (!isSwiping.current) return;
+  if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
+  isSwiping.current = false;
+};
 
   return (
     <div className="relative overflow-hidden rounded-xl mb-2">
@@ -767,31 +785,56 @@ const MainApp = () => {
                  </div>
 
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
-                    <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center text-white"><CalendarIcon size={18} fill="white" /></div><span className="text-[17px] text-black">Дата</span></div><IOSSwitch checked={hasDate} onChange={setHasDate} /></div>
-                    {hasDate && <div className="bg-white px-4 pb-3 animate-fade-in-ios"><input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" /></div>}
-                    <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-blue-500 flex items-center justify-center text-white"><Clock size={18} fill="white" /></div><span className="text-[17px] text-black">Время</span></div><IOSSwitch checked={hasTime} onChange={(val) => { setHasTime(val); if(val && !hasDate) setHasDate(true); }} /></div>
-                    {hasTime && <div className="bg-white px-4 pb-3 animate-fade-in-ios"><input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" /></div>}
+                    {/* ДАТА */}
                     <div className="bg-white p-3.5 flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-gray-400 flex items-center justify-center text-white">
-                          <RefreshCw size={18} />
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center text-white"><CalendarIcon size={18} fill="white" /></div>
+                            <span className="text-[17px] text-black">Дата</span>
                         </div>
-                        <span className="text-[17px] text-black">Повтор</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <select 
-                          className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-6 z-10 relative" 
-                          value={newT.frequency} 
-                          onChange={e => setNewT(p => ({...p, frequency: e.target.value}))}
-                        >
-                          <option value="once">Никогда</option>
-                          <option value="daily">Ежедневно</option>
-                          <option value="weekly">Еженедельно</option>
-                          <option value="monthly">Ежемесячно</option>
-                        </select>
-                      <ChevronRight size={16} className="text-gray-400 absolute right-0" />
-                      </div>
+                        <IOSSwitch checked={newT._hasDate} onChange={v => setNewT(p => ({...p, _hasDate: v}))} />
                     </div>
+                    {newT._hasDate && (
+                        <div className="bg-white px-4 pb-3 animate-fade-in-ios">
+                            <input type="date" value={newT._dateVal} onChange={e => setNewT(p => ({...p, _dateVal: e.target.value}))} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" />
+                        </div>
+                    )}
+
+                    {/* ВРЕМЯ */}
+                    <div className="bg-white p-3.5 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded bg-blue-500 flex items-center justify-center text-white"><Clock size={18} fill="white" /></div>
+                            <span className="text-[17px] text-black">Время</span>
+                        </div>
+                        <IOSSwitch checked={newT._hasTime} onChange={v => setNewT(p => ({...p, _hasTime: v}))} />
+                    </div>
+                    {newT._hasTime && (
+                        <div className="bg-white px-4 pb-3 animate-fade-in-ios">
+                            <input type="time" value={newT._timeVal} onChange={e => setNewT(p => ({...p, _timeVal: e.target.value}))} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" />
+                        </div>
+                    )}
+
+                    {/* ПОВТОР (ПОЯВЛЯЕТСЯ ТОЛЬКО ЕСЛИ ЕСТЬ ДАТА И ВРЕМЯ) */}
+                    {newT._hasDate && newT._hasTime && (
+                        <div className="bg-white p-3.5 flex justify-between items-center animate-fade-in-ios">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded bg-gray-400 flex items-center justify-center text-white"><RefreshCw size={18} /></div>
+                                <span className="text-[17px] text-black">Повтор</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <select 
+                                    className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-6 z-10 relative" 
+                                    value={newT.frequency} 
+                                    onChange={e => setNewT(p => ({...p, frequency: e.target.value}))}
+                                >
+                                    <option value="once">Никогда</option>
+                                    <option value="daily">Ежедневно</option>
+                                    <option value="weekly">Еженедельно</option>
+                                    <option value="monthly">Ежемесячно</option>
+                                </select>
+                                <ChevronRight size={16} className="text-gray-400 absolute right-0" />
+                            </div>
+                        </div>
+                    )}
                  </div>
 
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
