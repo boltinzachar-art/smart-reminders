@@ -416,6 +416,37 @@ const MainApp = () => {
     fetchData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
 
+  const openCreateModal = () => {
+      setEditingId(null);
+      
+      let initDate = false;
+      let initFlag = false;
+      let initList = null;
+      let dVal = new Date().toISOString().slice(0, 10);
+      let tVal = "09:00";
+
+      if (view === 'today') {
+          initDate = true;
+      } else if (view === 'upcoming') {
+          initDate = true;
+          const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+          dVal = tmr.toISOString().slice(0, 10);
+      } else if (view === 'flagged') {
+          initFlag = true;
+      } else if (['home', 'all', 'trash', 'completed'].indexOf(view) === -1) {
+          initList = view;
+      }
+
+      setNewT({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: initFlag, list_id: initList, is_all_day: false });
+      setHasDate(initDate);
+      setHasTime(false); 
+      setDateVal(dVal);
+      setTimeVal(tVal);
+      setAiInstruction(''); 
+      setAiResult('');
+      setTaskModal(true);
+  };
+
   const actions = {
     saveTask: async () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
