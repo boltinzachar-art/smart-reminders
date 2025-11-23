@@ -6,7 +6,7 @@ import {
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
   Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles, Settings,
-  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, Folder, BookmarkPlus, Globe
+  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, Folder, BookmarkPlus, Edit2
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -66,23 +66,6 @@ const ACTION_NAMES = {
     call: 'Позвонить'
 };
 
-// TIMEZONES LIST
-const TIMEZONES = [
-    { label: 'Москва (MSK)', value: 'Europe/Moscow' },
-    { label: 'Калининград (KALT)', value: 'Europe/Kaliningrad' },
-    { label: 'Самара (SAMT)', value: 'Europe/Samara' },
-    { label: 'Екатеринбург (YEKT)', value: 'Asia/Yekaterinburg' },
-    { label: 'Омск (OMST)', value: 'Asia/Omsk' },
-    { label: 'Красноярск (KRAT)', value: 'Asia/Krasnoyarsk' },
-    { label: 'Иркутск (IRKT)', value: 'Asia/Irkutsk' },
-    { label: 'Владивосток (VLAT)', value: 'Asia/Vladivostok' },
-    { label: 'Лондон (UTC)', value: 'UTC' },
-    { label: 'Варшава (CET)', value: 'Europe/Warsaw' },
-    { label: 'Дубай (GST)', value: 'Asia/Dubai' },
-    { label: 'Бангкок (ICT)', value: 'Asia/Bangkok' },
-    { label: 'Бали (WITA)', value: 'Asia/Makassar' },
-];
-
 // --- LOGIC HELPERS ---
 const calculateNextRun = (current, freq) => {
   if (!current) return null;
@@ -93,9 +76,13 @@ const calculateNextRun = (current, freq) => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
 
-const formatTime = (dateStr) => {
+const formatTime = (dateStr, isAllDay) => {
   if (!dateStr) return '';
   const d = new Date(dateStr);
+  if (isAllDay) {
+      const today = new Date();
+      return d.toDateString() === today.toDateString() ? 'Сегодня' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  }
   return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 };
 
@@ -152,12 +139,12 @@ const SwipeableListItem = ({ list, onEdit, onDelete }) => {
       <div 
         style={{ transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' }}
         onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list.id); }}
+        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list); }}
         className="relative z-10 bg-white p-4 flex items-center gap-3 active:bg-gray-50 transition-colors rounded-xl shadow-sm"
       >
         <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
         <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
-        <ChevronRight size={16} className="text-gray-300" />
+        <button onClick={(e) => {e.stopPropagation(); onEdit(list)}} className="text-blue-500"><Edit2 size={16}/></button>
       </div>
     </div>
   );
@@ -167,6 +154,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
   
+  // Свайп логика
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
   const isSwiping = useRef(false);
@@ -242,13 +230,6 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
   const dndProps = selectionMode || viewMode === 'trash' ? {} : { ...attributes, ...listeners };
 
-  let bgClass = "bg-white";
-  if (viewMode === 'search') {
-      if (task.is_deleted) bgClass = "bg-red-50 border border-red-100";
-      else if (task.completed) bgClass = "bg-gray-100 border border-gray-200";
-  }
-  if (isCompleting) bgClass = "bg-gray-50";
-
   return (
     <div ref={setNodeRef} style={dndStyle} {...dndProps}>
       {!isDragging && !selectionMode && viewMode !== 'trash' && (
@@ -258,7 +239,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
               </button>
           </div>
       )}
-      <div style={contentStyle} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={handleMainClick} className={`relative z-10 group w-full rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${bgClass} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
+      <div style={contentStyle} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={handleMainClick} className={`relative z-10 group w-full bg-white rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
         {viewMode !== 'trash' ? (
           <button onPointerDown={(e) => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
             {(selectionMode && isSelected || (!selectionMode && viewMode === 'completed')) && <Check size={14} className="text-white" strokeWidth={3} />}
@@ -277,7 +258,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
           </div>
           {task.description && <p className="text-gray-400 font-semibold text-[13px] leading-snug break-words line-clamp-2">{task.description}</p>}
           <div className="flex items-center flex-wrap gap-2 mt-2 h-6 overflow-hidden">
-            {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run)}</span>}
+            {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run, task.is_all_day)}</span>}
             {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium"><RefreshCw size={10} /> {task.frequency}</span>}
             {task.url && <a href={task.url.startsWith('http') ? task.url : `https://${task.url}`} target="_blank" rel="noreferrer" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition"><LinkIcon size={12}/> Ссылка</a>}
             {task.type !== 'reminder' && ACTION_ICONS[task.type] && (
@@ -342,12 +323,8 @@ const MainApp = () => {
   const [templates, setTemplates] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [userId, setUserId] = useState(null);
-  const [timezone, setTimezone] = useState('Europe/Moscow'); // DEFAULT
-  
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
-  
-  // Modals
   const [taskModal, setTaskModal] = useState(false);
   const [listModal, setListModal] = useState(false);
   const [listSettingsModal, setListSettingsModal] = useState(false);
@@ -355,15 +332,12 @@ const MainApp = () => {
   const [templatesPicker, setTemplatesPicker] = useState(false);
   const [actionPicker, setActionPicker] = useState(false);
   const [listPicker, setListPicker] = useState(false);
-  const [settingsModal, setSettingsModal] = useState(false); // NEW
-  
   const [editingId, setEditingId] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState('');
   const [aiInstruction, setAiInstruction] = useState('');
   const [newT, setNewT] = useState({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false, list_id: null, is_all_day: false });
-  
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
   const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
@@ -390,10 +364,6 @@ const MainApp = () => {
   useEffect(() => {
     if (!userId || !isOnline) return;
     const fetchData = async () => {
-      // Fetch User Profile for Timezone
-      const { data: profile } = await supabase.from('user_profiles').select('timezone').eq('telegram_user_id', userId).single();
-      if (profile) setTimezone(profile.timezone);
-
       const { data: t } = await supabase.from('tasks').select('*').eq('telegram_user_id', userId).order('position');
       if (t) {
          const local = tasks.filter(x => x.id.toString().startsWith('temp-'));
@@ -408,13 +378,39 @@ const MainApp = () => {
     fetchData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
 
+  // --- RESTORED openCreateModal FUNCTION ---
+  const openCreateModal = () => {
+      setEditingId(null);
+      
+      let initDate = false;
+      let initFlag = false;
+      let initList = null;
+      let dVal = new Date().toISOString().slice(0, 10);
+      let tVal = "09:00";
+
+      if (view === 'today') {
+          initDate = true;
+      } else if (view === 'upcoming') {
+          initDate = true;
+          const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+          dVal = tmr.toISOString().slice(0, 10);
+      } else if (view === 'flagged') {
+          initFlag = true;
+      } else if (['home', 'all', 'trash', 'completed'].indexOf(view) === -1) {
+          initList = view;
+      }
+
+      setNewT({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: initFlag, list_id: initList, is_all_day: false });
+      setHasDate(initDate);
+      setHasTime(false); 
+      setDateVal(dVal);
+      setTimeVal(tVal);
+      setAiInstruction(''); 
+      setAiResult('');
+      setTaskModal(true);
+  };
+
   const actions = {
-    saveSettings: async (newTz) => {
-        setTimezone(newTz);
-        setSettingsModal(false);
-        if (isOnline) await supabase.from('user_profiles').upsert({ telegram_user_id: userId, timezone: newTz });
-        toast("Сохранено");
-    },
     saveTask: async () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
       let finalDate = null;
@@ -444,7 +440,19 @@ const MainApp = () => {
     createList: async () => { if(!newListTitle)return; const l={title:newListTitle,telegram_user_id:userId,color:'#3B82F6'}; const{data}=await supabase.from('lists').insert([l]).select(); if(data){setLists(p=>[...p,data[0]]);toast("Список создан");} setListModal(false); setNewListTitle(''); },
     saveList: async () => { if(!newListTitle)return; if(editingListId){setLists(p=>p.map(l=>l.id===editingListId?{...l,title:newListTitle}:l)); if(isOnline)await supabase.from('lists').update({title:newListTitle}).eq('id',editingListId); toast("Переименовано");}else{actions.createList();} setListModal(false); setNewListTitle(''); setEditingListId(null); },
     deleteList: async (id) => { const targetId = id || editingListId; if(!targetId||!confirm("Удалить список и задачи?"))return; setTasks(p=>p.filter(t=>t.list_id!==targetId)); setLists(p=>p.filter(l=>l.id!==targetId)); if(view===targetId) setView('home'); setListModal(false); if(isOnline)await supabase.from('lists').delete().eq('id',targetId); toast("Удалено"); },
-    openListModal: (id=null) => { if(id){const l=lists.find(x=>x.id===id); setNewListTitle(l.title); setEditingListId(id);}else{setNewListTitle(''); setEditingListId(null);} setListModal(true); },
+    
+    // --- FIXED OPEN LIST MODAL ---
+    openListModal: (list) => { 
+        if(list){
+            setNewListTitle(list.title); 
+            setEditingListId(list.id);
+        } else {
+            setNewListTitle(''); 
+            setEditingListId(null);
+        } 
+        setListModal(true); 
+    },
+    
     complete: async (task) => { const isRec=task.frequency!=='once'&&task.next_run; const nd=isRec?calculateNextRun(task.next_run,task.frequency):null; setTasks(p=>p.map(t=>t.id===task.id?(isRec?{...t,next_run:nd}:{...t,completed:true}):t)); if(isOnline&&!task.id.toString().startsWith('temp-')){await supabase.from('tasks').update(isRec?{next_run:nd}:{completed:true}).eq('id',task.id);} toast(isRec?"Перенесено":"Выполнено"); },
     uncomplete: async (task) => { setTasks(p=>p.map(t=>t.id===task.id?{...t,completed:false}:t)); if(isOnline)await supabase.from('tasks').update({completed:false}).eq('id',task.id); },
     restore: async (id) => { setTasks(p=>p.map(t=>t.id===id?{...t,is_deleted:false}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:false}).eq('id',id); toast("Восстановлено"); },
@@ -540,12 +548,10 @@ const MainApp = () => {
       {view === 'home' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
           <div className="flex justify-between items-end mb-2">
-             <div className="flex gap-2">
-                 {/* SETTINGS BUTTON (NEW) */}
-                 <button onClick={() => setSettingsModal(true)} className="w-9 h-9 bg-gray-200 rounded-lg flex items-center justify-center text-gray-600 hover:text-black"><Settings size={20}/></button>
-                 <button onClick={() => { setShowSearch(!showSearch); setSearch(''); }} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${showSearch ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-600'}`}><Search size={20}/></button>
-             </div>
              <h2 className="text-3xl font-bold text-black ml-1">Мои дела</h2>
+             <div className="flex gap-2">
+                <button onClick={() => { setShowSearch(!showSearch); setSearch(''); }} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${showSearch ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-600'}`}><Search size={20}/></button>
+             </div>
           </div>
           
           {showSearch && <div className="animate-in fade-in slide-in-from-top-2"><input className="w-full bg-white p-3 rounded-xl text-black placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" placeholder="Поиск задач..." value={search} onChange={e => setSearch(e.target.value)} autoFocus /></div>}
@@ -638,33 +644,6 @@ const MainApp = () => {
         </div>
       )}
 
-      {/* --- SETTINGS MODAL (TIMEZONE) --- */}
-      {settingsModal && (
-          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
-              <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios">
-                  <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-bold text-black">Настройки</h3>
-                      <button onClick={() => setSettingsModal(false)} className="text-blue-600 font-bold">Готово</button>
-                  </div>
-                  
-                  <div className="mb-2 text-sm text-gray-500 font-medium">Часовой пояс (для уведомлений)</div>
-                  <div className="bg-gray-100 rounded-xl overflow-hidden max-h-[300px] overflow-y-auto">
-                      {TIMEZONES.map(tz => (
-                          <button 
-                              key={tz.value}
-                              onClick={() => actions.saveSettings(tz.value)}
-                              className={`w-full p-3 text-left border-b border-gray-200 last:border-0 flex justify-between items-center ${timezone === tz.value ? 'bg-white' : 'hover:bg-gray-50'}`}
-                          >
-                              <span className="text-black">{tz.label}</span>
-                              {timezone === tz.value && <Check size={16} className="text-blue-600"/>}
-                          </button>
-                      ))}
-                  </div>
-                  <div className="text-center mt-4 text-xs text-gray-400">v1.2.0 | Smart Reminder</div>
-              </div>
-          </div>
-      )}
-
       {/* --- LIST SETTINGS MODAL --- */}
       {listSettingsModal && (
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -714,10 +693,11 @@ const MainApp = () => {
                      </div>
                  </div>
 
-                 {/* AI BLOCK */}
+                 {/* AI BLOCK (BUTTON MOVED TO TOP-RIGHT) */}
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div>
+                        {/* SAVE AS TEMPLATE BUTTON (MOVED HERE) */}
                         <button onClick={actions.saveTemplate} className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200 active:scale-95 transition">
                             <BookmarkPlus size={14}/> Сохранить шаблон
                         </button>
@@ -742,6 +722,7 @@ const MainApp = () => {
                  </div>
 
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
+                    {/* LIST SELECTOR (NEW CLICKABLE ROW) */}
                     <div onClick={() => setListPicker(true)} className="bg-white p-3.5 flex justify-between items-center cursor-pointer active:bg-gray-50">
                         <span className="text-[17px] text-black">Список</span>
                         <div className="flex items-center gap-1 relative">
@@ -757,7 +738,12 @@ const MainApp = () => {
                  
                  {editingId && (
                      <div className="px-4 pb-6">
-                         <button onClick={() => { closeModal(); actions.delete(editingId); }} className="w-full text-red-500 font-bold text-[17px] py-3 bg-white rounded-xl shadow-sm active:scale-95 transition">Удалить напоминание</button>
+                         <button 
+                             onClick={() => { closeModal(); actions.delete(editingId); }} 
+                             className="w-full text-red-500 font-bold text-[17px] py-3 bg-white rounded-xl shadow-sm active:scale-95 transition"
+                         >
+                             Удалить напоминание
+                         </button>
                      </div>
                  )}
               </div>
@@ -809,7 +795,7 @@ const MainApp = () => {
           </div>
       )}
 
-      {/* LIST PICKER MODAL */}
+      {/* LIST PICKER MODAL (NEW NESTED MODAL) */}
       {listPicker && (
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[70] flex items-end sm:items-center justify-center">
               <div className="bg-[#F2F2F7] w-full sm:max-w-md rounded-t-2xl h-[70vh] flex flex-col shadow-2xl animate-slide-up-ios">
