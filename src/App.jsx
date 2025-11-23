@@ -6,7 +6,7 @@ import {
   CloudOff, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Clock, MapPin, 
   Flag, Camera, CheckCircle2, List as ListIcon, Inbox, CalendarClock, MoreHorizontal, 
   Check, X, Wand2, Loader2, Copy, AlertTriangle, ArrowDown, Sparkles, Settings,
-  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, Folder, BookmarkPlus
+  Zap, MessageCircle, Mail, Phone, Link as LinkIcon, BookmarkPlus
 } from 'lucide-react';
 import { DndContext, closestCenter, useSensor, useSensors, TouchSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -76,9 +76,18 @@ const calculateNextRun = (current, freq) => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
 
-const formatTime = (dateStr) => {
+const formatTime = (dateStr, isAllDay) => {
   if (!dateStr) return '';
   const d = new Date(dateStr);
+  
+  // Если "Весь день", возвращаем только дату
+  if (isAllDay) {
+      // Проверка: если дата сегодня - пишем "Сегодня", иначе дату
+      const today = new Date();
+      if (d.toDateString() === today.toDateString()) return 'Сегодня';
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  }
+
   return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 };
 
@@ -167,6 +176,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
     if (selectionMode || viewMode === 'trash' || isDragging) return;
     const currentX = e.touches[0].clientX;
     const diff = currentX - touchStartX.current;
+
     if (swipeOffset === 0 && diff < 0) {
         setSwipeOffset(Math.max(diff, -80)); 
         isSwiping.current = true;
@@ -178,7 +188,11 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
   const handleTouchEnd = () => {
     if (!isSwiping.current) return;
-    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
+    if (swipeOffset < -35) {
+        setSwipeOffset(-70);
+    } else {
+        setSwipeOffset(0);
+    }
     isSwiping.current = false;
   };
 
@@ -254,7 +268,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
           </div>
           {task.description && <p className="text-gray-400 font-semibold text-[13px] leading-snug break-words line-clamp-2">{task.description}</p>}
           <div className="flex items-center flex-wrap gap-2 mt-2 h-6 overflow-hidden">
-            {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run)}</span>}
+            {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run, task.is_all_day)}</span>}
             {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium"><RefreshCw size={10} /> {task.frequency}</span>}
             {task.url && <a href={task.url.startsWith('http') ? task.url : `https://${task.url}`} target="_blank" rel="noreferrer" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition"><LinkIcon size={12}/> Ссылка</a>}
             {task.type !== 'reminder' && ACTION_ICONS[task.type] && (
@@ -333,7 +347,10 @@ const MainApp = () => {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState('');
   const [aiInstruction, setAiInstruction] = useState('');
-  const [newT, setNewT] = useState({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false, list_id: null });
+  
+  // NEW FIELD: is_all_day
+  const [newT, setNewT] = useState({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false, list_id: null, is_all_day: false });
+  
   const [hasDate, setHasDate] = useState(false);
   const [hasTime, setHasTime] = useState(false);
   const [dateVal, setDateVal] = useState(new Date().toISOString().slice(0, 10));
@@ -374,7 +391,6 @@ const MainApp = () => {
     fetchData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
 
-  // --- CONTEXT AWARE OPEN MODAL ---
   const openCreateModal = () => {
       setEditingId(null);
       
@@ -384,23 +400,21 @@ const MainApp = () => {
       let dVal = new Date().toISOString().slice(0, 10);
       let tVal = "09:00";
 
-      // УМНЫЕ ДЕФОЛТЫ
       if (view === 'today') {
-          initDate = true; // Оставляем dVal как сегодня
+          initDate = true;
       } else if (view === 'upcoming') {
           initDate = true;
           const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
-          dVal = tmr.toISOString().slice(0, 10); // Завтра
+          dVal = tmr.toISOString().slice(0, 10);
       } else if (view === 'flagged') {
           initFlag = true;
       } else if (['home', 'all', 'trash', 'completed'].indexOf(view) === -1) {
-          // Значит мы внутри пользовательского списка
           initList = view;
       }
 
-      setNewT({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: initFlag, list_id: initList });
+      setNewT({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: initFlag, list_id: initList, is_all_day: false });
       setHasDate(initDate);
-      setHasTime(false);
+      setHasTime(false); // По умолчанию время выкл (Весь день)
       setDateVal(dVal);
       setTimeVal(tVal);
       setAiInstruction(''); 
@@ -411,15 +425,32 @@ const MainApp = () => {
   const actions = {
     saveTask: async () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
-      let finalDate = hasDate ? (dateVal + (hasTime ? 'T' + timeVal : 'T09:00')) : null;
-      const taskData = { ...newT, next_run: finalDate };
+      
+      // Логика Даты и Времени
+      let finalDate = null;
+      let isAllDay = false;
+
+      if (hasDate) {
+          if (hasTime) {
+              finalDate = dateVal + 'T' + timeVal;
+              isAllDay = false;
+          } else {
+              // Если время выключено -> это задача "Весь день"
+              // Сохраняем как 09:00, но ставим флаг
+              finalDate = dateVal + 'T09:00';
+              isAllDay = true;
+          }
+      }
+
+      const taskData = { ...newT, next_run: finalDate, is_all_day: isAllDay };
+      
       if (editingId) {
           setTasks(p => p.map(t => t.id === editingId ? { ...t, ...taskData } : t));
           if (isOnline && !editingId.toString().startsWith('temp-')) { const { id, ...upd } = taskData; await supabase.from('tasks').update(upd).eq('id', editingId); }
           toast("Сохранено");
       } else {
           const tempId = 'temp-' + Date.now();
-          // list_id уже установлен в openCreateModal или при выборе
+          // list_id уже есть в newT
           const task = { ...taskData, telegram_user_id: userId, status: 'active', completed: false, is_deleted: false, position: tasks.length, id: tempId };
           setTasks(p => [...p, task]);
           if (isOnline) { const { id, ...db } = task; const { data } = await supabase.from('tasks').insert([db]).select(); if (data) setTasks(p => p.map(t => t.id === tempId ? data[0] : t)); }
@@ -452,41 +483,52 @@ const MainApp = () => {
           title: task.title, description: task.description, url: task.url || '', 
           type: task.type || 'reminder', frequency: task.frequency || 'once', 
           priority: task.priority || 0, is_flagged: task.is_flagged || false,
-          list_id: task.list_id 
+          list_id: task.list_id,
+          is_all_day: task.is_all_day || false
       });
       setAiInstruction(''); setAiResult('');
       if (task.next_run) {
           const d = new Date(task.next_run);
           setHasDate(true); setDateVal(d.toISOString().slice(0, 10));
-          setHasTime(task.next_run.includes('T') && !task.next_run.endsWith('T09:00')); 
-          if (task.next_run.includes('T')) setTimeVal(d.toTimeString().slice(0, 5));
-      } else { setHasDate(false); setHasTime(false); }
+          // Если задача "весь день" (is_all_day=true) или время 09:00, считаем что время выключено
+          if (task.is_all_day) {
+              setHasTime(false);
+              setTimeVal("09:00");
+          } else {
+              setHasTime(true);
+              if (task.next_run.includes('T')) setTimeVal(d.toTimeString().slice(0, 5));
+          }
+      } else { 
+          setHasDate(false); setHasTime(false); 
+      }
       setTaskModal(true);
   };
 
   const closeModal = () => {
       setTaskModal(false); setEditingId(null);
-      setNewT({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false, list_id: null });
+      setNewT({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: false, list_id: null, is_all_day: false });
       setHasDate(false); setHasTime(false);
       setAiInstruction(''); setAiResult('');
   };
 
+  // Фильтрация и сортировка
   const filteredTasks = useMemo(() => {
     let res = tasks;
-    // GLOBAL SEARCH
     if (search) {
         const l = search.toLowerCase();
         return tasks.filter(t => 
             !t.is_deleted && 
-            (t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run).toLowerCase().includes(l)))
+            (t.title.toLowerCase().includes(l) || (t.next_run && formatTime(t.next_run, t.is_all_day).toLowerCase().includes(l)))
         );
     }
     if (view === 'trash') return res.filter(t => t.is_deleted);
     res = res.filter(t => !t.is_deleted);
     if (view === 'completed') return res.filter(t => t.completed);
     res = res.filter(t => !t.completed);
+
     const today = new Date().setHours(0,0,0,0);
     const tomorrow = today + 86400000;
+
     if (view === 'today') return res.filter(t => t.next_run && new Date(t.next_run) >= today && new Date(t.next_run) < tomorrow);
     if (view === 'upcoming') return res.filter(t => t.next_run && new Date(t.next_run) >= tomorrow);
     if (view === 'flagged') return res.filter(t => t.is_flagged);
@@ -640,7 +682,7 @@ const MainApp = () => {
                           <SwipeableListItem 
                               key={l.id} 
                               list={l} 
-                              onEdit={(lst) => actions.openListModal(lst)} 
+                              onEdit={(lst) => actions.openListModal(lst.id)} 
                               onDelete={(id) => { setEditingListId(id); actions.deleteList(id); }}
                           />
                       ))}
@@ -674,11 +716,10 @@ const MainApp = () => {
                      </div>
                  </div>
 
-                 {/* AI BLOCK (BUTTON MOVED TO TOP-RIGHT) */}
+                 {/* AI BLOCK */}
                  <div className="bg-white rounded-xl p-4 shadow-sm space-y-3 border border-purple-100">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-purple-600 font-bold"><Sparkles size={18}/> AI Ассистент</div>
-                        {/* SAVE AS TEMPLATE BUTTON (MOVED HERE) */}
                         <button onClick={actions.saveTemplate} className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-gray-200 active:scale-95 transition">
                             <BookmarkPlus size={14}/> Сохранить шаблон
                         </button>
@@ -703,7 +744,7 @@ const MainApp = () => {
                  </div>
 
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
-                    {/* LIST SELECTOR (NEW CLICKABLE ROW) */}
+                    {/* LIST SELECTOR */}
                     <div onClick={() => setListPicker(true)} className="bg-white p-3.5 flex justify-between items-center cursor-pointer active:bg-gray-50">
                         <span className="text-[17px] text-black">Список</span>
                         <div className="flex items-center gap-1 relative">
@@ -716,6 +757,18 @@ const MainApp = () => {
                     <div className="bg-white p-3.5 flex justify-between items-center"><span className="text-[17px] text-black">Приоритет</span><div className="flex items-center gap-1"><select className="appearance-none bg-transparent text-gray-500 text-[17px] text-right outline-none pr-6 z-10 relative" value={newT.priority} onChange={e => setNewT({...newT, priority: parseInt(e.target.value)})}>{['Нет','Низкий','Средний','Высокий'].map((v,i)=><option key={i} value={i}>{v}</option>)}</select><span className="absolute right-9 text-gray-500">{['Нет','!','!!','!!!'][newT.priority]}</span><ChevronRight size={16} className="text-gray-400 absolute right-3" /></div></div>
                     <div onClick={() => setActionPicker(true)} className="bg-white p-3.5 flex justify-between items-center cursor-pointer active:bg-gray-50"><span className="text-[17px] text-black">Действие</span><div className="flex items-center gap-1"><span className="text-blue-600 text-[17px] mr-1">{ACTION_NAMES[newT.type] || 'Нет'}</span><ChevronRight size={16} className="text-gray-400" /></div></div>
                  </div>
+                 
+                 {/* DELETE BUTTON AT BOTTOM OF MODAL */}
+                 {editingId && (
+                     <div className="px-4 pb-6">
+                         <button 
+                             onClick={() => { closeModal(); actions.delete(editingId); }} 
+                             className="w-full text-red-500 font-bold text-[17px] py-3 bg-white rounded-xl shadow-sm active:scale-95 transition"
+                         >
+                             Удалить напоминание
+                         </button>
+                     </div>
+                 )}
               </div>
            </div>
         </div>
@@ -798,7 +851,7 @@ const MainApp = () => {
               <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
               <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-black" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
               <div className="flex gap-2"><button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button><button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button></div>
-              {editingListId && <button onClick={actions.deleteList} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
+              {editingListId && <button onClick={() => actions.deleteList(editingListId)} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
            </div>
         </div>
       )}
