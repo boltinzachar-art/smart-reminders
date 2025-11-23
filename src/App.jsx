@@ -49,6 +49,21 @@ const IOSSwitch = ({ checked, onChange }) => (
   </button>
 );
 
+const TIMEZONES = [
+    { label: 'Москва (MSK)', value: 'Europe/Moscow' },
+    { label: 'Калининград (KALT)', value: 'Europe/Kaliningrad' },
+    { label: 'Самара (SAMT)', value: 'Europe/Samara' },
+    { label: 'Екатеринбург (YEKT)', value: 'Asia/Yekaterinburg' },
+    { label: 'Омск (OMST)', value: 'Asia/Omsk' },
+    { label: 'Красноярск (KRAT)', value: 'Asia/Krasnoyarsk' },
+    { label: 'Иркутск (IRKT)', value: 'Asia/Irkutsk' },
+    { label: 'Владивосток (VLAT)', value: 'Asia/Vladivostok' },
+    { label: 'Дубай (GST)', value: 'Asia/Dubai' },
+    { label: 'Бангкок (ICT)', value: 'Asia/Bangkok' },
+    { label: 'Бали (WITA)', value: 'Asia/Makassar' },
+    { label: 'Лондон (UTC)', value: 'UTC' },
+];
+
 const ACTION_ICONS = {
     email: <Mail size={14} />,
     whatsapp: <MessageCircle size={14} />,
@@ -345,6 +360,8 @@ const MainApp = () => {
   const [newListTitle, setNewListTitle] = useState('');
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [settingsModal, setSettingsModal] = useState(false);
+  const [timezone, setTimezone] = useState('Europe/Moscow');
   const [summaryTime, setSummaryTime] = useState('09:00');
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 5 } }));
@@ -365,18 +382,18 @@ const MainApp = () => {
   useEffect(() => {
     if (!userId || !isOnline) return;
     const fetchData = async () => {
-      const { data: t } = await supabase.from('tasks').select('*').eq('telegram_user_id', userId).order('position');
-      if (t) {
-         const local = tasks.filter(x => x.id.toString().startsWith('temp-'));
-         const map = new Map(); t.forEach(x => map.set(x.id, x)); local.forEach(x => map.set(x.id, x));
-         setTasks(Array.from(map.values()).sort((a,b) => a.position - b.position));
+      // -- НОВАЯ ЧАСТЬ НАЧАЛО --
+      const { data: profile } = await supabase.from('user_profiles').select('*').eq('telegram_user_id', userId).single();
+      if (profile) {
+          setTimezone(profile.timezone || 'Europe/Moscow');
+          setSummaryTime(profile.summary_time || '09:00');
       }
       const { data: l } = await supabase.from('lists').select('*').eq('telegram_user_id', userId);
       if (l) setLists(l);
       const { data: tmp } = await supabase.from('templates').select('*').eq('telegram_user_id', userId);
       if (tmp) setTemplates(tmp);
     };
-    fetchData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i);
+    fetchData(); 
   }, [userId, isOnline]);
 
   // --- RESTORED openCreateModal FUNCTION ---
@@ -452,7 +469,18 @@ const MainApp = () => {
           }
           toast("Создано");
       }
-      
+    },
+
+    saveSettings: async (newTz, newTime) => {
+      setTimezone(newTz);
+      setSummaryTime(newTime);
+      setSettingsModal(false);
+      if (isOnline) await supabase.from('user_profiles').upsert({ 
+        telegram_user_id: userId, 
+        timezone: newTz,
+        summary_time: newTime 
+      });
+      toast("Настройки сохранены");
     },
     // ... (остальные функции saveTemplate, deleteList и т.д. оставь как были, меняем только saveTask)
     // Чтобы не копировать весь файл, просто аккуратно замени метод saveTask.
@@ -573,6 +601,7 @@ const MainApp = () => {
           <div className="flex justify-between items-end mb-2">
              <h2 className="text-3xl font-bold text-black ml-1">Мои дела</h2>
              <div className="flex gap-2">
+                <button onClick={() => setSettingsModal(true)} className="w-9 h-9 bg-gray-200 rounded-lg flex items-center justify-center text-gray-600 hover:text-black"><Settings size={20}/></button>
                 <button onClick={() => { setShowSearch(!showSearch); setSearch(''); }} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${showSearch ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-600'}`}><Search size={20}/></button>
              </div>
           </div>
@@ -629,7 +658,7 @@ const MainApp = () => {
              {view === 'upcoming' && !selectionMode ? (
                  <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal} />
              ) : (
-                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
+                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={() => { document.body.style.overflow = 'hidden'; }} onDragEnd={(e) => {document.body.style.overflow = ''; actions.reorder(e);}}  >
                     <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
                         {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
                             <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
@@ -879,6 +908,45 @@ const MainApp = () => {
            </div>
         </div>
       )}
+      {settingsModal && (
+          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios max-h-[80vh] overflow-y-auto">
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-bold text-black">Настройки</h3>
+                      <button onClick={() => setSettingsModal(false)} className="text-blue-600 font-bold">Готово</button>
+                  </div>
+                  
+                  {/* Выбор времени сводки */}
+                  <div className="mb-6">
+                      <div className="mb-2 text-sm text-gray-500 font-medium">Ежедневная сводка (время)</div>
+                      <div className="bg-gray-100 rounded-xl p-3 flex items-center justify-between">
+                          <span className="text-black">Присылать план в:</span>
+                          <input 
+                              type="time" 
+                              className="bg-transparent text-blue-600 font-bold outline-none text-right"
+                              value={summaryTime}
+                              onChange={(e) => setSummaryTime(e.target.value)}
+                          />
+                      </div>
+                  </div>
+
+                  {/* Выбор часового пояса */}
+                  <div className="mb-2 text-sm text-gray-500 font-medium">Часовой пояс</div>
+                  <div className="bg-gray-100 rounded-xl overflow-hidden">
+                      {TIMEZONES.map(tz => (
+                          <button 
+                              key={tz.value}
+                              onClick={() => actions.saveSettings(tz.value, summaryTime)}
+                              className={`w-full p-3 text-left border-b border-gray-200 last:border-0 flex justify-between items-center ${timezone === tz.value ? 'bg-white' : 'hover:bg-gray-50'}`}
+                          >
+                              <span className="text-black text-sm">{tz.label}</span>
+                              {timezone === tz.value && <Check size={16} className="text-blue-600"/>}
+                          </button>
+                      ))}
+            </div>
+        </div>
+    </div>
+)}   
     </div>
   );
 };
