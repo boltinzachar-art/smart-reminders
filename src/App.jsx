@@ -870,7 +870,10 @@ const MainApp = () => {
               <h3 className="text-lg font-bold text-center mb-4 text-black">{editingListId ? 'Название списка' : 'Новый список'}</h3>
               <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
               <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-black" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
-              <div className="flex gap-2"><button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button><button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button></div>
+              <div className="flex gap-2">
+                <button onClick={() => { setShowSearch(!showSearch); setSearch(''); }} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${showSearch ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-600'}`}><Search size={20}/></button>
+                <button onClick={() => setSettingsModal(true)} className="w-9 h-9 bg-gray-200 rounded-lg flex items-center justify-center text-gray-600 hover:text-black"><Settings size={20}/></button>
+              </div>
               {editingListId && <button onClick={actions.deleteList} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
            </div>
         </div>
