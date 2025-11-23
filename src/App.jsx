@@ -345,6 +345,7 @@ const MainApp = () => {
   const [newListTitle, setNewListTitle] = useState('');
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [summaryTime, setSummaryTime] = useState('09:00');
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 5 } }));
 
