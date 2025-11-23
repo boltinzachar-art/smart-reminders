@@ -49,19 +49,6 @@ const IOSSwitch = ({ checked, onChange }) => (
   </button>
 );
 
-const TIMEZONES = [
-    { label: 'UTC+2 (Калининград)', value: 'Europe/Kaliningrad' },
-    { label: 'UTC+3 (Москва)', value: 'Europe/Moscow' },
-    { label: 'UTC+4 (Самара, Дубай)', value: 'Europe/Samara' },
-    { label: 'UTC+5 (Екатеринбург)', value: 'Asia/Yekaterinburg' },
-    { label: 'UTC+6 (Омск)', value: 'Asia/Omsk' },
-    { label: 'UTC+7 (Красноярск, Бангкок)', value: 'Asia/Krasnoyarsk' },
-    { label: 'UTC+8 (Иркутск, Бали)', value: 'Asia/Irkutsk' },
-    { label: 'UTC+9 (Токио)', value: 'Asia/Tokyo' },
-    { label: 'UTC+10 (Владивосток)', value: 'Asia/Vladivostok' },
-    { label: 'UTC+0 (Лондон)', value: 'UTC' },
-];
-
 const ACTION_ICONS = {
     email: <Mail size={14} />,
     whatsapp: <MessageCircle size={14} />,
@@ -96,6 +83,7 @@ const formatTime = (dateStr, isAllDay) => {
       const today = new Date();
       return d.toDateString() === today.toDateString() ? 'Сегодня' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
   }
+  // Формируем время HH:MM
   return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 };
 
@@ -124,45 +112,25 @@ const performAction = (e, task, showToast) => {
 const SwipeableListItem = ({ list, onEdit, onDelete }) => {
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
-  const touchStartY = useRef(0);
   const isSwiping = useRef(false);
 
   const handleTouchStart = (e) => {
-    if (selectionMode || viewMode === 'trash' || isDragging) return;
     touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY; // Запоминаем Y
     isSwiping.current = false;
   };
 
   const handleTouchMove = (e) => {
-    if (selectionMode || viewMode === 'trash' || isDragging) return;
-    
     const currentX = e.touches[0].clientX;
-    const currentY = e.touches[0].clientY;
-    
-    const diffX = currentX - touchStartX.current;
-    const diffY = currentY - touchStartY.current;
-
-    // ГЛАВНЫЙ ФИКС:
-    // Если движение по вертикали больше, чем по горизонтали -> это скролл ленты.
-    // Игнорируем свайп карточки.
-    if (Math.abs(diffY) > Math.abs(diffX)) return;
-
-    // Логика свайпа влево/вправо
-    if (swipeOffset === 0 && diffX < 0) {
-        setSwipeOffset(Math.max(diffX, -80)); 
-        isSwiping.current = true;
-    } else if (swipeOffset < 0) {
-        setSwipeOffset(Math.min(Math.max(-70 + diffX, -80), 0)); 
-        isSwiping.current = true;
-    }
+    const diff = currentX - touchStartX.current;
+    if (swipeOffset === 0 && diff < 0) { setSwipeOffset(Math.max(diff, -80)); isSwiping.current = true; } 
+    else if (swipeOffset < 0) { setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); isSwiping.current = true; }
   };
 
-const handleTouchEnd = () => {
-  if (!isSwiping.current) return;
-  if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
-  isSwiping.current = false;
-};
+  const handleTouchEnd = () => {
+    if (!isSwiping.current) return;
+    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
+    isSwiping.current = false;
+  };
 
   return (
     <div className="relative overflow-hidden rounded-xl mb-2">
@@ -172,12 +140,12 @@ const handleTouchEnd = () => {
       <div 
         style={{ transform: `translateX(${swipeOffset}px)`, transition: isSwiping.current ? 'none' : 'transform 0.2s ease-out' }}
         onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list); }}
+        onClick={() => { if (swipeOffset < 0) setSwipeOffset(0); else onEdit(list.id); }}
         className="relative z-10 bg-white p-4 flex items-center gap-3 active:bg-gray-50 transition-colors rounded-xl shadow-sm"
       >
         <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><ListIcon size={16} className="text-blue-600" /></div>
         <span className="flex-1 text-[17px] font-medium text-black">{list.title}</span>
-        <button onClick={(e) => {e.stopPropagation(); onEdit(list)}} className="text-blue-500"><Edit2 size={16}/></button>
+        <ChevronRight size={16} className="text-gray-300" />
       </div>
     </div>
   );
@@ -186,10 +154,11 @@ const handleTouchEnd = () => {
 const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isFocused, setIsFocused] = useState(false); // Новое состояние: показаны ли настройки
   
-  // Свайп логика
   const [swipeOffset, setSwipeOffset] = useState(0);
   const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
   const isSwiping = useRef(false);
   const timerRef = useRef(null);
   const toast = useToast();
@@ -197,18 +166,24 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   const handleTouchStart = (e) => {
     if (selectionMode || viewMode === 'trash' || isDragging) return;
     touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
     isSwiping.current = false;
   };
 
   const handleTouchMove = (e) => {
     if (selectionMode || viewMode === 'trash' || isDragging) return;
     const currentX = e.touches[0].clientX;
-    const diff = currentX - touchStartX.current;
-    if (swipeOffset === 0 && diff < 0) {
-        setSwipeOffset(Math.max(diff, -80)); 
+    const currentY = e.touches[0].clientY;
+    const diffX = currentX - touchStartX.current;
+    const diffY = currentY - touchStartY.current;
+
+    if (Math.abs(diffY) > Math.abs(diffX)) return; // Это скролл
+
+    if (swipeOffset === 0 && diffX < 0) {
+        setSwipeOffset(Math.max(diffX, -80)); 
         isSwiping.current = true;
     } else if (swipeOffset < 0) {
-        setSwipeOffset(Math.min(Math.max(-70 + diff, -80), 0)); 
+        setSwipeOffset(Math.min(Math.max(-70 + diffX, -80), 0)); 
         isSwiping.current = true;
     }
   };
@@ -219,9 +194,13 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
     isSwiping.current = false;
   };
 
+  // Клик по карточке: переключает режим "Настройки"
   const handleMainClick = (e) => {
       if (swipeOffset < 0) { setSwipeOffset(0); return; }
-      if (selectionMode) { e.stopPropagation(); onSelect(task.id); }
+      if (selectionMode) { e.stopPropagation(); onSelect(task.id); return; }
+      
+      // Переключаем фокус (6 точек <-> 3 точки)
+      setIsFocused(!isFocused);
   };
 
   const handleCircleClick = (e) => {
@@ -264,7 +243,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
   const dndProps = selectionMode || viewMode === 'trash' ? {} : { ...attributes, ...listeners };
 
   return (
-    <div ref={setNodeRef} style={dndStyle} {...dndProps}>
+    <div ref={setNodeRef} style={dndStyle}>
       {!isDragging && !selectionMode && viewMode !== 'trash' && (
           <div className="absolute inset-y-0 right-2 flex items-center justify-end z-0">
               <button className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white shadow-sm active:scale-90 transition-transform" onPointerDown={(e) => e.stopPropagation()} onClick={() => actions.delete(task.id)}>
@@ -272,7 +251,14 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
               </button>
           </div>
       )}
-      <div style={contentStyle} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={handleMainClick} className={`relative z-10 group w-full bg-white rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}>
+      <div 
+        style={contentStyle} 
+        onTouchStart={handleTouchStart} 
+        onTouchMove={handleTouchMove} 
+        onTouchEnd={handleTouchEnd} 
+        onClick={handleMainClick} 
+        className={`relative z-10 group w-full bg-white rounded-xl p-4 shadow-sm flex items-start gap-3 transition-colors ${isCompleting ? 'bg-gray-50' : ''} ${isDragging ? 'shadow-xl ring-2 ring-blue-500/20' : ''}`}
+      >
         {viewMode !== 'trash' ? (
           <button onPointerDown={(e) => e.stopPropagation()} onClick={handleCircleClick} className={circleClass}>
             {(selectionMode && isSelected || (!selectionMode && viewMode === 'completed')) && <Check size={14} className="text-white" strokeWidth={3} />}
@@ -291,7 +277,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
           </div>
           {task.description && <p className="text-gray-400 font-semibold text-[13px] leading-snug break-words line-clamp-2">{task.description}</p>}
           <div className="flex items-center flex-wrap gap-2 mt-2 h-6 overflow-hidden">
-            {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>{formatTime(task.next_run, task.is_all_day)}</span>}
+            {task.next_run && <span className={`text-xs font-semibold ${isOverdue ? 'text-red-500' : 'text-blue-500'}`}>{formatTime(task.next_run, task.is_all_day)}</span>}
             {task.frequency !== 'once' && <span className="text-gray-400 flex items-center text-xs gap-0.5 font-medium"><RefreshCw size={10} /> {task.frequency}</span>}
             {task.url && <a href={task.url.startsWith('http') ? task.url : `https://${task.url}`} target="_blank" rel="noreferrer" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition"><LinkIcon size={12}/> Ссылка</a>}
             {task.type !== 'reminder' && ACTION_ICONS[task.type] && (
@@ -300,8 +286,26 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
           </div>
         </div>
 
+        {/* SMART BUTTON RIGHT SIDE */}
         {!selectionMode && !viewMode.includes('trash') && (
-            <button className="text-gray-400 p-3 -mr-2 -my-2 hover:bg-gray-100 rounded-full active:text-gray-600 touch-manipulation relative z-20" onPointerDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(task); }}><MoreHorizontal size={22} /></button>
+             isFocused ? (
+                // MODE 2: SETTINGS (3 Dots)
+                <button 
+                    className="text-gray-400 p-3 -mr-2 -my-2 hover:bg-gray-100 rounded-full active:text-gray-600 animate-in zoom-in duration-200"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onEdit(task); }}
+                >
+                    <MoreHorizontal size={22} />
+                </button>
+             ) : (
+                // MODE 1: DRAG HANDLE (6 Dots)
+                <div 
+                    {...dndProps} 
+                    className="text-gray-300 p-3 -mr-2 -my-2 touch-none cursor-grab active:cursor-grabbing"
+                >
+                    <GripVertical size={22} />
+                </div>
+             )
         )}
       </div>
     </div>
@@ -378,11 +382,9 @@ const MainApp = () => {
   const [newListTitle, setNewListTitle] = useState('');
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const [settingsModal, setSettingsModal] = useState(false);
-  const [timezone, setTimezone] = useState('Europe/Moscow');
-  const [summaryTime, setSummaryTime] = useState('09:00');
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 5 } }));
+  // ВАЖНО: Используем только PointerSensor без задержек, так как теперь есть ручка
+  const sensors = useSensors(useSensor(PointerSensor));
 
   useEffect(() => {
     const handleStatus = () => setIsOnline(navigator.onLine);
@@ -400,128 +402,51 @@ const MainApp = () => {
   useEffect(() => {
     if (!userId || !isOnline) return;
     const fetchData = async () => {
-      // -- НОВАЯ ЧАСТЬ НАЧАЛО --
-      const { data: profile } = await supabase.from('user_profiles').select('*').eq('telegram_user_id', userId).single();
-      if (profile) {
-          setTimezone(profile.timezone || 'Europe/Moscow');
-          setSummaryTime(profile.summary_time || '09:00');
+      const { data: t } = await supabase.from('tasks').select('*').eq('telegram_user_id', userId).order('position');
+      if (t) {
+         const local = tasks.filter(x => x.id.toString().startsWith('temp-'));
+         const map = new Map(); t.forEach(x => map.set(x.id, x)); local.forEach(x => map.set(x.id, x));
+         setTasks(Array.from(map.values()).sort((a,b) => a.position - b.position));
       }
       const { data: l } = await supabase.from('lists').select('*').eq('telegram_user_id', userId);
       if (l) setLists(l);
       const { data: tmp } = await supabase.from('templates').select('*').eq('telegram_user_id', userId);
       if (tmp) setTemplates(tmp);
     };
-    fetchData(); 
+    fetchData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
-
-  // --- RESTORED openCreateModal FUNCTION ---
-  const openCreateModal = () => {
-      setEditingId(null);
-      
-      let initDate = false;
-      let initFlag = false;
-      let initList = null;
-      let dVal = new Date().toISOString().slice(0, 10);
-      let tVal = "09:00";
-
-      if (view === 'today') {
-          initDate = true;
-      } else if (view === 'upcoming') {
-          initDate = true;
-          const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
-          dVal = tmr.toISOString().slice(0, 10);
-      } else if (view === 'flagged') {
-          initFlag = true;
-      } else if (['home', 'all', 'trash', 'completed'].indexOf(view) === -1) {
-          initList = view;
-      }
-
-      setNewT({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: initFlag, list_id: initList, is_all_day: false });
-      setHasDate(initDate);
-      setHasTime(false); 
-      setDateVal(dVal);
-      setTimeVal(tVal);
-      setAiInstruction(''); 
-      setAiResult('');
-      setTaskModal(true);
-  };
 
   const actions = {
     saveTask: async () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
-      
-      closeModal();
-
       let finalDate = null;
       let isAllDay = false;
-
       if (hasDate) {
-          if (hasTime) {
-              // ВАЖНО: Собираем строку вручную "YYYY-MM-DDTHH:MM", чтобы не было сдвига часовых поясов
-              finalDate = `${dateVal}T${timeVal}:00`; 
-              isAllDay = false;
-          } else {
-              finalDate = `${dateVal}T09:00:00`;
-              isAllDay = true;
-          }
+          if (hasTime) { finalDate = dateVal + 'T' + timeVal; isAllDay = false; } 
+          else { finalDate = dateVal + 'T09:00'; isAllDay = true; }
       }
-      
       const taskData = { ...newT, next_run: finalDate, is_all_day: isAllDay };
-      
       if (editingId) {
           setTasks(p => p.map(t => t.id === editingId ? { ...t, ...taskData } : t));
-          if (isOnline && !editingId.toString().startsWith('temp-')) { 
-              const { id, ...upd } = taskData; 
-              await supabase.from('tasks').update(upd).eq('id', editingId); 
-          }
+          if (isOnline && !editingId.toString().startsWith('temp-')) { const { id, ...upd } = taskData; await supabase.from('tasks').update(upd).eq('id', editingId); }
           toast("Сохранено");
       } else {
           const tempId = 'temp-' + Date.now();
           const listId = newT.list_id || (['home','today','all','upcoming','flagged','trash','completed'].includes(view) ? null : view);
           const task = { ...taskData, telegram_user_id: userId, status: 'active', completed: false, is_deleted: false, position: tasks.length, id: tempId, list_id: listId };
           setTasks(p => [...p, task]);
-          if (isOnline) { 
-              const { id, ...db } = task; 
-              const { data } = await supabase.from('tasks').insert([db]).select(); 
-              if (data) setTasks(p => p.map(t => t.id === tempId ? data[0] : t)); 
-          }
+          if (isOnline) { const { id, ...db } = task; const { data } = await supabase.from('tasks').insert([db]).select(); if (data) setTasks(p => p.map(t => t.id === tempId ? data[0] : t)); }
           toast("Создано");
       }
+      closeModal();
     },
-
-    saveSettings: async (newTz, newTime) => {
-      setTimezone(newTz);
-      setSummaryTime(newTime);
-      setSettingsModal(false);
-      if (isOnline) await supabase.from('user_profiles').upsert({ 
-        telegram_user_id: userId, 
-        timezone: newTz,
-        summary_time: newTime 
-      });
-      toast("Настройки сохранены");
-    },
-    // ... (остальные функции saveTemplate, deleteList и т.д. оставь как были, меняем только saveTask)
-    // Чтобы не копировать весь файл, просто аккуратно замени метод saveTask.
-    // НО, если боишься ошибиться, ниже я дам ВЕСЬ файл целиком.
     saveTemplate: async () => { if (!newT.title) return toast("Введите название", "error"); const template = { title: newT.title, description: newT.description, type: newT.type, telegram_user_id: userId, url: newT.url }; if (isOnline) { const { data } = await supabase.from('templates').insert([template]).select(); if (data) { setTemplates(p => [...p, data[0]]); toast("Шаблон сохранен"); } } },
     applyTemplate: (tmpl) => { setNewT(prev => ({ ...prev, title: tmpl.title, description: tmpl.description, type: tmpl.type, url: tmpl.url || '' })); setTemplatesPicker(false); toast("Применено"); },
     deleteTemplate: async (id) => { if(confirm("Удалить?")){ setTemplates(p=>p.filter(t=>t.id!==id)); if(isOnline) await supabase.from('templates').delete().eq('id', id); } },
     createList: async () => { if(!newListTitle)return; const l={title:newListTitle,telegram_user_id:userId,color:'#3B82F6'}; const{data}=await supabase.from('lists').insert([l]).select(); if(data){setLists(p=>[...p,data[0]]);toast("Список создан");} setListModal(false); setNewListTitle(''); },
     saveList: async () => { if(!newListTitle)return; if(editingListId){setLists(p=>p.map(l=>l.id===editingListId?{...l,title:newListTitle}:l)); if(isOnline)await supabase.from('lists').update({title:newListTitle}).eq('id',editingListId); toast("Переименовано");}else{actions.createList();} setListModal(false); setNewListTitle(''); setEditingListId(null); },
     deleteList: async (id) => { const targetId = id || editingListId; if(!targetId||!confirm("Удалить список и задачи?"))return; setTasks(p=>p.filter(t=>t.list_id!==targetId)); setLists(p=>p.filter(l=>l.id!==targetId)); if(view===targetId) setView('home'); setListModal(false); if(isOnline)await supabase.from('lists').delete().eq('id',targetId); toast("Удалено"); },
-    
-    // --- FIXED OPEN LIST MODAL ---
-    openListModal: (list) => { 
-        if(list){
-            setNewListTitle(list.title); 
-            setEditingListId(list.id);
-        } else {
-            setNewListTitle(''); 
-            setEditingListId(null);
-        } 
-        setListModal(true); 
-    },
-    
+    openListModal: (id=null) => { if(id){const l=lists.find(x=>x.id===id); setNewListTitle(l.title); setEditingListId(id);}else{setNewListTitle(''); setEditingListId(null);} setListModal(true); },
     complete: async (task) => { const isRec=task.frequency!=='once'&&task.next_run; const nd=isRec?calculateNextRun(task.next_run,task.frequency):null; setTasks(p=>p.map(t=>t.id===task.id?(isRec?{...t,next_run:nd}:{...t,completed:true}):t)); if(isOnline&&!task.id.toString().startsWith('temp-')){await supabase.from('tasks').update(isRec?{next_run:nd}:{completed:true}).eq('id',task.id);} toast(isRec?"Перенесено":"Выполнено"); },
     uncomplete: async (task) => { setTasks(p=>p.map(t=>t.id===task.id?{...t,completed:false}:t)); if(isOnline)await supabase.from('tasks').update({completed:false}).eq('id',task.id); },
     restore: async (id) => { setTasks(p=>p.map(t=>t.id===id?{...t,is_deleted:false}:t)); if(isOnline)await supabase.from('tasks').update({is_deleted:false}).eq('id',id); toast("Восстановлено"); },
@@ -613,13 +538,12 @@ const MainApp = () => {
   const isCustomList = !['home', 'today', 'upcoming', 'all', 'flagged', 'trash', 'completed'].includes(view);
 
   return (
-    <div className="h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
+    <div className="min-h-[100dvh] w-full bg-[#F2F2F7] text-black font-sans flex flex-col overflow-hidden">
       {view === 'home' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-6 animate-in slide-in-from-left-4 duration-300">
           <div className="flex justify-between items-end mb-2">
              <h2 className="text-3xl font-bold text-black ml-1">Мои дела</h2>
              <div className="flex gap-2">
-                <button onClick={() => setSettingsModal(true)} className="w-9 h-9 bg-gray-200 rounded-lg flex items-center justify-center text-gray-600 hover:text-black"><Settings size={20}/></button>
                 <button onClick={() => { setShowSearch(!showSearch); setSearch(''); }} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${showSearch ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-600'}`}><Search size={20}/></button>
              </div>
           </div>
@@ -676,7 +600,7 @@ const MainApp = () => {
              {view === 'upcoming' && !selectionMode ? (
                  <ScheduledView tasks={filteredTasks} actions={actions} onEdit={openEditModal} />
              ) : (
-                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={() => { document.body.style.overflow = 'hidden'; }} onDragEnd={(e) => {document.body.style.overflow = ''; actions.reorder(e);}}  >
+                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={actions.reorder}>
                     <SortableContext items={filteredTasks} strategy={verticalListSortingStrategy}>
                         {filteredTasks.length === 0 ? <div className="text-center py-20 text-gray-400">Нет напоминаний</div> : filteredTasks.map(t => (
                             <TaskItem key={t.id} task={t} actions={actions} viewMode={view} selectionMode={selectionMode} isSelected={selectedIds.has(t.id)} onSelect={actions.toggleSelect} onEdit={openEditModal}/>
@@ -729,7 +653,7 @@ const MainApp = () => {
                           <SwipeableListItem 
                               key={l.id} 
                               list={l} 
-                              onEdit={(lst) => actions.openListModal(lst.id)} 
+                              onEdit={(lstId) => actions.openListModal(lstId)} 
                               onDelete={(id) => { setEditingListId(id); actions.deleteList(id); }}
                           />
                       ))}
@@ -785,60 +709,14 @@ const MainApp = () => {
                  </div>
 
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
-                    {/* ДАТА */}
-                    <div className="bg-white p-3.5 flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center text-white"><CalendarIcon size={18} fill="white" /></div>
-                            <span className="text-[17px] text-black">Дата</span>
-                        </div>
-                        <IOSSwitch checked={newT._hasDate} onChange={v => setNewT(p => ({...p, _hasDate: v}))} />
-                    </div>
-                    {newT._hasDate && (
-                        <div className="bg-white px-4 pb-3 animate-fade-in-ios">
-                            <input type="date" value={newT._dateVal} onChange={e => setNewT(p => ({...p, _dateVal: e.target.value}))} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" />
-                        </div>
-                    )}
-
-                    {/* ВРЕМЯ */}
-                    <div className="bg-white p-3.5 flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded bg-blue-500 flex items-center justify-center text-white"><Clock size={18} fill="white" /></div>
-                            <span className="text-[17px] text-black">Время</span>
-                        </div>
-                        <IOSSwitch checked={newT._hasTime} onChange={v => setNewT(p => ({...p, _hasTime: v}))} />
-                    </div>
-                    {newT._hasTime && (
-                        <div className="bg-white px-4 pb-3 animate-fade-in-ios">
-                            <input type="time" value={newT._timeVal} onChange={e => setNewT(p => ({...p, _timeVal: e.target.value}))} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" />
-                        </div>
-                    )}
-
-                    {/* ПОВТОР (ПОЯВЛЯЕТСЯ ТОЛЬКО ЕСЛИ ЕСТЬ ДАТА И ВРЕМЯ) */}
-                    {newT._hasDate && newT._hasTime && (
-                        <div className="bg-white p-3.5 flex justify-between items-center animate-fade-in-ios">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded bg-gray-400 flex items-center justify-center text-white"><RefreshCw size={18} /></div>
-                                <span className="text-[17px] text-black">Повтор</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <select 
-                                    className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-6 z-10 relative" 
-                                    value={newT.frequency} 
-                                    onChange={e => setNewT(p => ({...p, frequency: e.target.value}))}
-                                >
-                                    <option value="once">Никогда</option>
-                                    <option value="daily">Ежедневно</option>
-                                    <option value="weekly">Еженедельно</option>
-                                    <option value="monthly">Ежемесячно</option>
-                                </select>
-                                <ChevronRight size={16} className="text-gray-400 absolute right-0" />
-                            </div>
-                        </div>
-                    )}
+                    <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center text-white"><CalendarIcon size={18} fill="white" /></div><span className="text-[17px] text-black">Дата</span></div><IOSSwitch checked={hasDate} onChange={setHasDate} /></div>
+                    {hasDate && <div className="bg-white px-4 pb-3 animate-fade-in-ios"><input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" /></div>}
+                    <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-blue-500 flex items-center justify-center text-white"><Clock size={18} fill="white" /></div><span className="text-[17px] text-black">Время</span></div><IOSSwitch checked={hasTime} onChange={(val) => { setHasTime(val); if(val && !hasDate) setHasDate(true); }} /></div>
+                    {hasTime && <div className="bg-white px-4 pb-3 animate-fade-in-ios"><input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" /></div>}
                  </div>
 
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
-                    {/* LIST SELECTOR (NEW CLICKABLE ROW) */}
+                    {/* LIST SELECTOR */}
                     <div onClick={() => setListPicker(true)} className="bg-white p-3.5 flex justify-between items-center cursor-pointer active:bg-gray-50">
                         <span className="text-[17px] text-black">Список</span>
                         <div className="flex items-center gap-1 relative">
@@ -943,53 +821,11 @@ const MainApp = () => {
               <h3 className="text-lg font-bold text-center mb-4 text-black">{editingListId ? 'Название списка' : 'Новый список'}</h3>
               <div className="bg-gray-100 rounded-xl p-4 mb-4 flex justify-center"><div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><ListIcon size={32} className="text-white" /></div></div>
               <input className="w-full bg-gray-100 rounded-lg p-3 text-center text-[17px] font-bold outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-black" placeholder="Название списка" value={newListTitle} onChange={e => setNewListTitle(e.target.value)} autoFocus />
-              <div className="flex gap-2">
-                <button onClick={() => { setShowSearch(!showSearch); setSearch(''); }} className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${showSearch ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-600'}`}><Search size={20}/></button>
-                <button onClick={() => setSettingsModal(true)} className="w-9 h-9 bg-gray-200 rounded-lg flex items-center justify-center text-gray-600 hover:text-black"><Settings size={20}/></button>
-              </div>
+              <div className="flex gap-2"><button onClick={() => setListModal(false)} className="flex-1 py-3 text-gray-500 font-medium hover:bg-gray-50 rounded-lg">Отмена</button><button onClick={actions.saveList} disabled={!newListTitle} className="flex-1 py-3 text-blue-600 font-bold hover:bg-blue-50 rounded-lg disabled:opacity-50">Готово</button></div>
               {editingListId && <button onClick={actions.deleteList} className="w-full mt-2 py-2 text-red-500 text-sm font-medium">Удалить список</button>}
            </div>
         </div>
       )}
-      {settingsModal && (
-          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
-              <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios max-h-[80vh] overflow-y-auto">
-                  <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-bold text-black">Настройки</h3>
-                      <button onClick={() => setSettingsModal(false)} className="text-blue-600 font-bold">Готово</button>
-                  </div>
-                  
-                  {/* Выбор времени сводки */}
-                  <div className="mb-6">
-                      <div className="mb-2 text-sm text-gray-500 font-medium">Ежедневная сводка (время)</div>
-                      <div className="bg-gray-100 rounded-xl p-3 flex items-center justify-between">
-                          <span className="text-black">Присылать план в:</span>
-                          <input 
-                              type="time" 
-                              className="bg-transparent text-blue-600 font-bold outline-none text-right"
-                              value={summaryTime}
-                              onChange={(e) => setSummaryTime(e.target.value)}
-                          />
-                      </div>
-                  </div>
-
-                  {/* Выбор часового пояса */}
-                  <div className="mb-2 text-sm text-gray-500 font-medium">Часовой пояс</div>
-                  <div className="bg-gray-100 rounded-xl overflow-hidden">
-                      {TIMEZONES.map(tz => (
-                          <button 
-                              key={tz.value}
-                              onClick={() => actions.saveSettings(tz.value, summaryTime)}
-                              className={`w-full p-3 text-left border-b border-gray-200 last:border-0 flex justify-between items-center ${timezone === tz.value ? 'bg-white' : 'hover:bg-gray-50'}`}
-                          >
-                              <span className="text-black text-sm">{tz.label}</span>
-                              {timezone === tz.value && <Check size={16} className="text-blue-600"/>}
-                          </button>
-                      ))}
-            </div>
-        </div>
-    </div>
-)}   
     </div>
   );
 };
