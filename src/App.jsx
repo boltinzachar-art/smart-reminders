@@ -178,11 +178,7 @@ const TaskItem = ({ task, actions, viewMode, selectionMode, isSelected, onSelect
 
   const handleTouchEnd = () => {
     if (!isSwiping.current) return;
-    if (swipeOffset < -35) {
-        setSwipeOffset(-70);
-    } else {
-        setSwipeOffset(0);
-    }
+    if (swipeOffset < -35) setSwipeOffset(-70); else setSwipeOffset(0);
     isSwiping.current = false;
   };
 
@@ -378,6 +374,40 @@ const MainApp = () => {
     fetchData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i);
   }, [userId, isOnline]);
 
+  // --- CONTEXT AWARE OPEN MODAL ---
+  const openCreateModal = () => {
+      setEditingId(null);
+      
+      let initDate = false;
+      let initFlag = false;
+      let initList = null;
+      let dVal = new Date().toISOString().slice(0, 10);
+      let tVal = "09:00";
+
+      // УМНЫЕ ДЕФОЛТЫ
+      if (view === 'today') {
+          initDate = true; // Оставляем dVal как сегодня
+      } else if (view === 'upcoming') {
+          initDate = true;
+          const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+          dVal = tmr.toISOString().slice(0, 10); // Завтра
+      } else if (view === 'flagged') {
+          initFlag = true;
+      } else if (['home', 'all', 'trash', 'completed'].indexOf(view) === -1) {
+          // Значит мы внутри пользовательского списка
+          initList = view;
+      }
+
+      setNewT({ title: '', description: '', url: '', type: 'reminder', frequency: 'once', priority: 0, is_flagged: initFlag, list_id: initList });
+      setHasDate(initDate);
+      setHasTime(false);
+      setDateVal(dVal);
+      setTimeVal(tVal);
+      setAiInstruction(''); 
+      setAiResult('');
+      setTaskModal(true);
+  };
+
   const actions = {
     saveTask: async () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
@@ -389,8 +419,8 @@ const MainApp = () => {
           toast("Сохранено");
       } else {
           const tempId = 'temp-' + Date.now();
-          const listId = newT.list_id || (['home','today','all','upcoming','flagged','trash','completed'].includes(view) ? null : view);
-          const task = { ...taskData, telegram_user_id: userId, status: 'active', completed: false, is_deleted: false, position: tasks.length, id: tempId, list_id: listId };
+          // list_id уже установлен в openCreateModal или при выборе
+          const task = { ...taskData, telegram_user_id: userId, status: 'active', completed: false, is_deleted: false, position: tasks.length, id: tempId };
           setTasks(p => [...p, task]);
           if (isOnline) { const { id, ...db } = task; const { data } = await supabase.from('tasks').insert([db]).select(); if (data) setTasks(p => p.map(t => t.id === tempId ? data[0] : t)); }
           toast("Создано");
@@ -569,7 +599,7 @@ const MainApp = () => {
 
           {!selectionMode && !['trash','completed'].includes(view) && (
             <div className="fixed bottom-6 right-6 z-30">
-               <button onClick={() => setTaskModal(true)} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
+               <button onClick={openCreateModal} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
                   <Plus size={32} />
                </button>
             </div>
@@ -589,7 +619,7 @@ const MainApp = () => {
       {/* --- FAB ON HOME --- */}
       {view === 'home' && !search && (
         <div className="fixed bottom-6 right-6 z-30 animate-in fade-in zoom-in">
-           <button onClick={() => setTaskModal(true)} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
+           <button onClick={openCreateModal} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
               <Plus size={32} />
            </button>
         </div>
@@ -610,7 +640,7 @@ const MainApp = () => {
                           <SwipeableListItem 
                               key={l.id} 
                               list={l} 
-                              onEdit={(lst) => actions.openListModal(lst.id)} 
+                              onEdit={(lst) => actions.openListModal(lst)} 
                               onDelete={(id) => { setEditingListId(id); actions.deleteList(id); }}
                           />
                       ))}
@@ -729,20 +759,7 @@ const MainApp = () => {
           <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
               <div className="bg-white w-full max-w-xs rounded-2xl p-4 shadow-2xl animate-zoom-in-ios max-h-[60vh] overflow-y-auto">
                   <h3 className="text-lg font-bold text-center mb-4 text-black">Выберите шаблон</h3>
-                  <div className="space-y-2">
-                      {templates.length === 0 && <div className="text-center text-gray-400">Нет шаблонов</div>}
-                      {templates.map(t => (
-                          <div key={t.id} className="group w-full bg-gray-50 rounded-xl flex items-center pr-2 overflow-hidden transition-transform active:scale-[0.98]">
-                              <button onClick={() => actions.applyTemplate(t)} className="flex-1 p-3 text-left focus:outline-none">
-                                  <div className="font-bold text-black">{t.title}</div>
-                                  <div className="text-xs text-gray-500 line-clamp-1">{t.description}</div>
-                              </button>
-                              <button onClick={(e) => { e.stopPropagation(); actions.deleteTemplate(t.id); }} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
-                                  <Trash2 size={18} />
-                              </button>
-                          </div>
-                      ))}
-                  </div>
+                  <div className="space-y-2">{templates.length === 0 && <div className="text-center text-gray-400">Нет шаблонов</div>}{templates.map(t => (<button key={t.id} onClick={() => actions.applyTemplate(t)} className="w-full bg-gray-50 p-3 rounded-xl text-left hover:bg-gray-100 active:scale-95 transition"><div className="font-bold text-black">{t.title}</div><div className="text-xs text-gray-500 line-clamp-1">{t.description}</div></button>))}</div>
                   <button onClick={() => setTemplatesPicker(false)} className="w-full mt-4 py-3 text-gray-500 font-medium">Отмена</button>
               </div>
           </div>
