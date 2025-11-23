@@ -414,6 +414,8 @@ const MainApp = () => {
     saveTask: async () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
       
+      closeModal();
+
       let finalDate = null;
       let isAllDay = false;
 
@@ -449,7 +451,7 @@ const MainApp = () => {
           }
           toast("Создано");
       }
-      closeModal();
+      
     },
     // ... (остальные функции saveTemplate, deleteList и т.д. оставь как были, меняем только saveTask)
     // Чтобы не копировать весь файл, просто аккуратно замени метод saveTask.
@@ -739,6 +741,27 @@ const MainApp = () => {
                     {hasDate && <div className="bg-white px-4 pb-3 animate-fade-in-ios"><input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" /></div>}
                     <div className="bg-white p-3.5 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded bg-blue-500 flex items-center justify-center text-white"><Clock size={18} fill="white" /></div><span className="text-[17px] text-black">Время</span></div><IOSSwitch checked={hasTime} onChange={(val) => { setHasTime(val); if(val && !hasDate) setHasDate(true); }} /></div>
                     {hasTime && <div className="bg-white px-4 pb-3 animate-fade-in-ios"><input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)} className="w-full p-2 bg-gray-100 rounded text-blue-600 font-semibold outline-none text-right" /></div>}
+                    <div className="bg-white p-3.5 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded bg-gray-400 flex items-center justify-center text-white">
+                          <RefreshCw size={18} />
+                        </div>
+                        <span className="text-[17px] text-black">Повтор</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <select 
+                          className="appearance-none bg-transparent text-blue-600 text-[17px] text-right outline-none pr-6 z-10 relative" 
+                          value={newT.frequency} 
+                          onChange={e => setNewT(p => ({...p, frequency: e.target.value}))}
+                        >
+                          <option value="once">Никогда</option>
+                          <option value="daily">Ежедневно</option>
+                          <option value="weekly">Еженедельно</option>
+                          <option value="monthly">Ежемесячно</option>
+                        </select>
+                      <ChevronRight size={16} className="text-gray-400 absolute right-0" />
+                      </div>
+                    </div>
                  </div>
 
                  <div className="bg-white rounded-xl overflow-hidden shadow-sm space-y-[1px] bg-gray-100">
