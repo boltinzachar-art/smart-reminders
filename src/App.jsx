@@ -452,6 +452,9 @@ const MainApp = () => {
       if (!newT.title) { toast("Введите название", "error"); return; }
       let finalDate = null;
       let isAllDay = false;
+
+      closeModal();
+      
       if (hasDate) {
           if (hasTime) { finalDate = dateVal + 'T' + timeVal; isAllDay = false; } 
           else { finalDate = dateVal + 'T09:00'; isAllDay = true; }
@@ -469,7 +472,6 @@ const MainApp = () => {
           if (isOnline) { const { id, ...db } = task; const { data } = await supabase.from('tasks').insert([db]).select(); if (data) setTasks(p => p.map(t => t.id === tempId ? data[0] : t)); }
           toast("Создано");
       }
-      closeModal();
     },
     saveTemplate: async () => { if (!newT.title) return toast("Введите название", "error"); const template = { title: newT.title, description: newT.description, type: newT.type, telegram_user_id: userId, url: newT.url }; if (isOnline) { const { data } = await supabase.from('templates').insert([template]).select(); if (data) { setTemplates(p => [...p, data[0]]); toast("Шаблон сохранен"); } } },
     applyTemplate: (tmpl) => { setNewT(prev => ({ ...prev, title: tmpl.title, description: tmpl.description, type: tmpl.type, url: tmpl.url || '' })); setTemplatesPicker(false); toast("Применено"); },
